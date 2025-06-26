@@ -38,7 +38,7 @@ class ImageAnalyzer:
             return False
     
     def prepare_data(self):
-        """Extract and prepare image data for analysis."""
+        """Extract and prepare image data for analysis, ensuring files exist."""
         if not self.data:
             return False
             
@@ -49,24 +49,36 @@ class ImageAnalyzer:
             "entropy": [], "edgedensity": []
         }
 
+        missing_files_count = 0
+        
         for filename, attributes in self.data.items():
             if attributes.get('status') == 'success':
-                item_data = {
-                    'filename': filename,
-                    'brightness': attributes.get('avg_brightness', 0),
-                    'laplacian': attributes.get('laplacian', 0),
-                    'saturation': attributes.get('avg_saturation', 0),
-                    'entropy': attributes.get('entropy', 0),
-                    'edgedensity': attributes.get('edge_density', 0)
-                }
-                self.image_data.append(item_data)
-                for key in score_lists:
-                    score_lists[key].append(item_data[key])
+                # Check if the image file actually exists
+                image_path = os.path.join(self.image_dir, filename)
+                if os.path.exists(image_path):
+                    item_data = {
+                        'filename': filename,
+                        'brightness': attributes.get('avg_brightness', 0),
+                        'laplacian': attributes.get('laplacian', 0),
+                        'saturation': attributes.get('avg_saturation', 0),
+                        'entropy': attributes.get('entropy', 0),
+                        'edgedensity': attributes.get('edge_density', 0)
+                    }
+                    self.image_data.append(item_data)
+                    for key in score_lists:
+                        # Make sure the key exists in item_data before appending
+                        if key in item_data:
+                            score_lists[key].append(item_data[key])
+                else:
+                    missing_files_count += 1
+
+        if missing_files_count > 0:
+            logging.warning(f"{missing_files_count} images from the JSON file were not found in the image directory and will be excluded from the analysis.")
 
         # Calculate statistics
         self.stats = {
             "total_images": len(self.data),
-            "successful_images": len(self.image_data)
+            "successful_images": len(self.image_data) # This now reflects existing files
         }
         
         percentiles_to_calc = [50, 67, 75, 90, 95, 99]
@@ -85,7 +97,12 @@ class ImageAnalyzer:
             for i, p in enumerate(percentiles_to_calc):
                 self.stats[key]["percentiles"][p] = percentile_values[i]
         
-        logging.info(f"Prepared data for {len(self.image_data)} successful images")
+        logging.info(f"Prepared data for {len(self.image_data)} successful and existing images")
+        
+        if not self.image_data:
+            logging.error("No valid image data to analyze after checking for file existence.")
+            return False
+                       
         return True
     
     def generate_html_viewer(self):
@@ -357,7 +374,7 @@ class ImageAnalyzer:
     
     def _generate_edge_density_report(self, df_success):
         """Generate and log edge density statistics."""
-        logging.info("\n" + "="*50)
+        logging.info("="*50)
         logging.info("EDGE DENSITY ANALYSIS REPORT")
         logging.info("="*50)
         
@@ -449,7 +466,7 @@ class ImageAnalyzer:
             title_suffix = " (Log Scale)"
         
         plt.figure(figsize=(12, 10))
-        sns.heatmap(heatmap_data, square=True, cmap='inferno_r', norm=norm)
+        sns.heatmap(heatmap_data, square=True, cmap='jet', norm=norm)
         plt.title(f'Edge Density Graded Heatmap{title_suffix}', fontsize=14, pad=20)
         
         output_path = os.path.join(self.output_dir, 'edge_density_graded_heatmap_log_scale.png')
@@ -506,7 +523,7 @@ class ImageAnalyzer:
         edge_analysis_success = self.analyze_edge_density()
         
         # Summary
-        logging.info("\n" + "="*50)
+        logging.info("="*50)
         logging.info("ANALYSIS COMPLETE")
         logging.info("="*50)
         logging.info(f"Output directory: {self.output_dir}")
@@ -534,12 +551,12 @@ Examples:
         """
     )
     
-    parser.add_argument('image_dir', type=str, 
+    parser.add_argument('--image-dir', type=str, required=True,
                        help='Directory containing the webp image files')
     parser.add_argument('--json-path', type=str, required=True,
                        help='Path to the input JSON file containing image metrics')
-    parser.add_argument('--output-dir', type=str, default='output',
-                       help='Directory to save all output files (default: output)')
+    parser.add_argument('--output-dir', type=str, default='RESULTS',
+                       help='Directory to save all output files (default: RESULTS)')
     parser.add_argument('--html-only', action='store_true',
                        help='Generate only the HTML viewer')
     parser.add_argument('--analysis-only', action='store_true',
@@ -551,8 +568,8 @@ Examples:
     if args.html_only and args.analysis_only:
         parser.error("Cannot specify both --html-only and --analysis-only")
     
-    if not os.path.exists(args.image_dir):
-        parser.error(f"Image directory does not exist: {args.image_dir}")
+    if not os.path.exists(args.image_dir) or not os.path.isdir(args.image_dir):
+        parser.error(f"Image directory does not exist or not a directory: {args.image_dir}")
     
     if not os.path.exists(args.json_path):
         parser.error(f"JSON file does not exist: {args.json_path}")
