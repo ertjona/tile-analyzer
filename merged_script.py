@@ -69,7 +69,7 @@ class ImageAnalyzer:
             "successful_images": len(self.image_data)
         }
         
-        percentiles_to_calc = [67, 75, 90, 95, 99]
+        percentiles_to_calc = [50, 67, 75, 90, 95, 99]
         for key, scores in score_lists.items():
             if not scores:
                 continue
@@ -77,7 +77,8 @@ class ImageAnalyzer:
                 "min": min(scores),
                 "max": max(scores),
                 "mean": statistics.mean(scores),
-                "median": statistics.median(scores),
+                "mode": statistics.mode(scores),
+                "stdev": statistics.stdev(scores),
                 "percentiles": {}
             }
             percentile_values = np.percentile(scores, percentiles_to_calc)
@@ -102,9 +103,10 @@ class ImageAnalyzer:
             min_val = s.get('min', 0)
             max_val = s.get('max', 0)
             mean_val = s.get('mean', 0)
-            median_val = s.get('median', 0)
+            mode_val = s.get('mode', 0)
+            stdev_val = s.get('stdev', 0)
 
-            stats_html[f'{key}_main'] = f"<p><b>Min:</b> {min_val:.6f} | <b>Max:</b> {max_val:.6f} | <b>Mean:</b> {mean_val:.6f} | <b>Median:</b> {median_val:.6f}</p>"
+            stats_html[f'{key}_main'] = f"<p><b>Min:</b> {min_val:.6f} | <b>Max:</b> {max_val:.6f} | <b>Mean:</b> {mean_val:.6f} | <b>Mode:</b> {mode_val:.6f} | <b>Stdev:</b> {stdev_val:.6f}</p>"
             
             p_dict = s.get('percentiles', {})
             if p_dict:
@@ -151,7 +153,7 @@ class ImageAnalyzer:
     </style>
 </head>
 <body>
-    <h1>Image Viewer</h1>
+    <h1>{self.image_dir.replace(os.path.sep, '/')}</h1>
 
     <div class="stats">
         <h2>Statistics</h2>
@@ -366,7 +368,7 @@ class ImageAnalyzer:
         print(f"Min: {stats['min']:.6f}")
         print(f"Max: {stats['max']:.6f}")
         print(f"Mean: {stats['mean']:.6f}")
-        print(f"Median: {stats['50%']:.6f}")
+        #print(f"Median: {stats['50%']:.6f}")
         print(f"Std Dev: {stats['std']:.6f}")
         
         # Zero-value analysis
@@ -379,7 +381,7 @@ class ImageAnalyzer:
         print(f"Tiles with zero edge density: {zero_count} / {total_count} ({zero_percentage:.2f}%)")
         
         # Percentile distribution
-        percentiles = [0.67, 0.75, 0.90, 0.95, 0.99]
+        percentiles = [0.5, 0.67, 0.75, 0.90, 0.95, 0.99]
         percentile_values = df_success['edge_density'].quantile(percentiles)
         
         logging.info("\n--- Percentile Distribution ---")
@@ -423,7 +425,7 @@ class ImageAnalyzer:
         
         # Add statistics annotation
         stats_text = f"Tiles with Zero Edge Density: {zero_count} of {total_count} ({zero_percentage:.2f}%)"
-        plt.figtext(0.05, 0.01, stats_text, ha="left", fontsize=12,
+        plt.figtext(0.05, 0.01, stats_text, ha="center", fontsize=12,
                    bbox={"facecolor":"white", "alpha":0.8, "pad":8})
         
         output_path = os.path.join(self.output_dir, 'edge_density_binary_heatmap.png')
