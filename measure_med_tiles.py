@@ -100,10 +100,14 @@ def process_single_tile(filepath, skip_measurements=None):
 def calculate_edge_density(gray_img):
     """Calculate edge density using adaptive Canny thresholds."""
     median_val = np.median(gray_img)
+    logging.debug(f"Gray image median: {median_val}")
     sigma = 0.33
     lower_thresh = int(max(0, (1.0 - sigma) * median_val))
+    logging.debug(f"Lower threshold: {lower_thresh}")
     upper_thresh = int(min(255, (1.0 + sigma) * median_val))
+    logging.debug(f"Upper threshold: {upper_thresh}")
     edges = cv2.Canny(gray_img, lower_thresh, upper_thresh)
+    logging.debug(f"Mean of Edges: {np.mean(edges)}")
     return np.mean(edges) / 255.0
 
 def generate_tile_data(args):
@@ -166,15 +170,20 @@ def generate_tile_data(args):
             elif data.get("status") == "warning":
                 warning_count += 1
 
+    # Create the final data structure to be saved in JSON
+    output_data = {
+        "image_directory": args.image_folder,
+        "tiles": tile_data
+    }
+
     # Save results
     logging.info(f"Processing complete: {success_count} successful, {warning_count} warnings, {error_count} errors")
     
     with open(args.output_json, "w") as f:
-        json.dump(tile_data, f, indent=2)
+        json.dump(output_data, f, indent=2)
     
     logging.info(f"Data saved to: {args.output_json}")
 
-# Analysis functionality removed - to be redesigned
 
 #======================================================================
 # MAIN ENTRY POINT

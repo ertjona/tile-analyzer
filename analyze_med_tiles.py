@@ -15,10 +15,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class ImageAnalyzer:
     """Main class for analyzing image data and generating outputs."""
     
-    def __init__(self, json_path, image_dir, output_dir):
+    def __init__(self, json_path, output_dir):
         self.json_path = json_path
-        self.image_dir = image_dir
         self.output_dir = output_dir
+        self.image_dir = None
         self.data = None
         self.image_data = []
         self.stats = {}
@@ -27,7 +27,14 @@ class ImageAnalyzer:
         """Load and validate JSON data."""
         try:
             with open(self.json_path, 'r') as f:
-                self.data = json.load(f)
+                loaded_json = json.load(f)
+            
+            self.image_dir = loaded_json.get("image_directory")
+            if not self.image_dir:
+                logging.error("Error: 'image_directory' not found in the JSON file.")
+                return False
+
+            self.data = loaded_json.get("tiles", {})
             logging.info(f"Loaded data from: {self.json_path}")
             return True
         except FileNotFoundError:
@@ -38,7 +45,7 @@ class ImageAnalyzer:
             return False
     
     def prepare_data(self):
-        """Extract and prepare image data for analysis, ensuring files exist."""
+        """Extract and prepare image data for analysis."""
         if not self.data:
             return False
             
@@ -541,18 +548,16 @@ def main():
         epilog="""
 Examples:
   # Generate both HTML viewer and edge density analysis
-  python script.py /path/to/images --json-path data.json --output-dir results
+  python analyze_med_tiles.py --json-path data.json --output-dir results
   
   # Generate only HTML viewer
-  python script.py /path/to/images --json-path data.json --output-dir results --html-only
+  python analyze_med_tiles.py --json-path data.json --output-dir results --html-only
   
   # Generate only edge density analysis
-  python script.py /path/to/images --json-path data.json --output-dir results --analysis-only
+  python analyze_med_tiles.py --json-path data.json --output-dir results --analysis-only
         """
     )
     
-    parser.add_argument('--image-dir', type=str, required=True,
-                       help='Directory containing the webp image files')
     parser.add_argument('--json-path', type=str, required=True,
                        help='Path to the input JSON file containing image metrics')
     parser.add_argument('--output-dir', type=str, default='RESULTS',
@@ -568,24 +573,27 @@ Examples:
     if args.html_only and args.analysis_only:
         parser.error("Cannot specify both --html-only and --analysis-only")
     
-    if not os.path.exists(args.image_dir) or not os.path.isdir(args.image_dir):
-        parser.error(f"Image directory does not exist or not a directory: {args.image_dir}")
-    
     if not os.path.exists(args.json_path):
         parser.error(f"JSON file does not exist: {args.json_path}")
     
     # Create analyzer instance
-    analyzer = ImageAnalyzer(args.json_path, args.image_dir, args.output_dir)
+    analyzer = ImageAnalyzer(args.json_path, args.output_dir)
     
+    # Load data
+    if not analyzer.load_data():
+        return
+
+    # Validate image directory from JSON
+    if not os.path.isdir(analyzer.image_dir):
+        parser.error(f"Image directory '{analyzer.image_dir}' from JSON file not found.")
+
     # Run analysis based on arguments
     if args.html_only:
         # Load data and generate HTML only
-        if analyzer.load_data() and analyzer.prepare_data():
+        if analyzer.prepare_data():
             analyzer.generate_html_viewer()
     elif args.analysis_only:
-        # Load data and run edge density analysis only
-        if analyzer.load_data():
-            analyzer.analyze_edge_density()
+        analyzer.analyze_edge_density()
     else:
         # Run complete analysis
         analyzer.run_complete_analysis()
