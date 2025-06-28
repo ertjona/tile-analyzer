@@ -83,14 +83,13 @@ Once you have your `data.json` file, you can use the `analyze_med_tiles.py` scri
 **Command:**
 
 ```bash
-python analyze_med_tiles.py <path_to_image_folder> --json-path <path_to_json_file> --output-dir <output_directory> [options]
+python analyze_med_tiles.py --json-path <path_to_json_file> --output-dir <output_directory> [options]
 ```
 
 **Arguments:**
 
-  * `--image-dir`: The directory containing the `.webp` image files. This is needed to display the images in the HTML viewer.
   * `--json-path`: The path to the input JSON file generated in Step 1.
-  * `--output-dir`: The directory where the output files (HTML viewer, plots) will be saved.
+  * `--output-dir`: The directory where the output files (HTML viewer, plots) will be saved. If not provided, save in RESULTS directory.
 
 **Options:**
 
@@ -105,15 +104,15 @@ If neither option is specified, the script will run the complete analysis, gener
 
   * **Run the complete analysis:**
     ```bash
-    python analyze_med_tiles.py --image-dir ./my_tiles --json-path data.json --output-dir results
+    python analyze_med_tiles.py --json-path data.json --output-dir results
     ```
   * **Generate only the HTML viewer:**
     ```bash
-    python analyze_med_tiles.py --image-dir ./my_tiles --json-path data.json --output-dir results --html-only
+    python analyze_med_tiles.py --json-path data.json --output-dir results --html-only
     ```
   * **Generate only the edge density analysis:**
     ```bash
-    python analyze_med_tiles.py --image-dir ./my_tiles --json-path data.json --output-dir results --analysis-only
+    python analyze_med_tiles.py --json-path data.json --output-dir results --analysis-only
     ```
 
 ## Outputs
