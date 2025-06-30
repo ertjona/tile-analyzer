@@ -1,85 +1,101 @@
 # backend/main.py
 
 import sqlite3
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import FileResponse # <--- IMPORT THIS
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from typing import List, Optional, Dict, Any
 from pathlib import Path
 import numpy as np
+from typing import List, Optional, Any, Dict
+
+## NEW: Import Pydantic's BaseModel to define the request structure
+from pydantic import BaseModel
 
 # --- Configuration ---
 SCRIPT_DIR = Path(__file__).resolve().parent
 DB_PATH = SCRIPT_DIR.parent / "database" / "analysis.db"
-
 app = FastAPI()
 
 
-# --- Helper Functions ---
+## NEW: Pydantic models to define the structure of our POST request body
+class Filter(BaseModel):
+    key: str
+    op: str
+    value: Any
 
+class Sort(BaseModel):
+    key: str
+    order: str
+
+class TilesRequest(BaseModel):
+    filters: List[Filter] = []
+    sort: List[Sort] = [Sort(key="id", order="asc")]
+    page: int = 1
+    limit: int = 50
+
+
+# --- Helper Functions ---
 def get_db_connection():
     """Establishes a connection to the database."""
     conn = sqlite3.connect(DB_PATH)
-    # This allows you to access columns by name
     conn.row_factory = sqlite3.Row 
     return conn
 
-# --- API Endpoint ---
 
-@app.get("/api/tiles")
-def get_tiles(
-    # ... (all your existing parameters are correct) ...
-    filter_key: Optional[str] = None,
-    filter_op: Optional[str] = None,
-    filter_value: Optional[str] = None,
-    sort: Optional[str] = Query(None, description="Sort order, e.g., 'edge_density:desc,entropy:asc'"),
-    page: int = 1,
-    limit: int = 50
-) -> Dict[str, Any]:
+# --- API Endpoints ---
+
+## MODIFIED: Changed from @app.get to @app.post and updated the function
+@app.post("/api/tiles")
+def search_tiles(request: TilesRequest) -> Dict[str, Any]:
+    """
+    Retrieves a paginated list of image tiles based on a structured JSON request.
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    base_query = "SELECT * FROM ImageTiles"
-    count_query = "SELECT COUNT(*) FROM ImageTiles" # <-- NEW: Query to get the total count
+    # MODIFIED: Query now JOINS with SourceFiles and explicitly lists columns
+    base_query = "SELECT T.*, S.json_filename FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
+    count_query = "SELECT COUNT(T.id) FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
+    
     where_clauses = []
     params = []
 
-    if filter_key and filter_op and filter_value:
-        valid_operators = {">", "<", ">=", "<=", "==", "!="}
-        if filter_op in valid_operators:
-            where_clauses.append(f"{filter_key} {filter_op} ?")
-            params.append(filter_value)
-        else:
-            raise HTTPException(status_code=400, detail="Invalid filter operator.")
+    # MODIFIED: Logic now reads from the request body's filter list
+    if request.filters:
+        for f in request.filters:
+            valid_operators = {">", "<", ">=", "<=", "==", "!="}
+            if f.op in valid_operators:
+                # Use "T." prefix to specify the ImageTiles table in the JOIN
+                where_clauses.append(f"T.{f.key} {f.op} ?")
+                params.append(f.value)
+            else:
+                # Skip invalid operators
+                continue
 
-    order_by_clause = "ORDER BY id"
-    if sort:
-        sort_parts = []
-        for part in sort.split(','):
-            key, __, order = part.partition(':')
-            order = order.upper() if order in ['asc', 'desc'] else 'ASC'
-            sort_parts.append(f"{key} {order}")
-        if sort_parts:
-            order_by_clause = "ORDER BY " + ", ".join(sort_parts)
+    # MODIFIED: Sorting logic now reads from the request body's sort list
+    order_by_parts = []
+    for s in request.sort:
+        order = s.order.upper() if s.order.lower() in ['asc', 'desc'] else 'ASC'
+        # TODO: Add validation for sort key to prevent SQL injection
+        order_by_parts.append(f"T.{s.key} {order}")
+    order_by_clause = "ORDER BY " + ", ".join(order_by_parts)
 
     pagination_clause = "LIMIT ? OFFSET ?"
-    offset = (page - 1) * limit
+    offset = (request.page - 1) * request.limit
     
-    # Build the full query for fetching data
+    # Build the full query
+    final_query = base_query
     if where_clauses:
-        final_query = f"{base_query} WHERE {' AND '.join(where_clauses)} {order_by_clause} {pagination_clause}"
-        count_query = f"{count_query} WHERE {' AND '.join(where_clauses)}"
-    else:
-        final_query = f"{base_query} {order_by_clause} {pagination_clause}"
+        final_query += f" WHERE {' AND '.join(where_clauses)}"
+        count_query += f" WHERE {' AND '.join(where_clauses)}"
+    
+    final_query += f" {order_by_clause} {pagination_clause}"
 
     try:
-        # --- NEW: Execute the count query first ---
-        # Note: The parameters for the count query do not include limit/offset
         cursor.execute(count_query, params)
         total_results = cursor.fetchone()[0]
 
-        # --- Execute the main data query ---
-        cursor.execute(final_query, params + [limit, offset])
+        cursor.execute(final_query, params + [request.limit, offset])
         tiles = cursor.fetchall()
         results = [dict(row) for row in tiles]
         
@@ -88,10 +104,15 @@ def get_tiles(
     finally:
         conn.close()
 
-    # --- NEW: Return the total_results in the response ---
-    return {"page": page, "limit": limit, "total_results": total_results, "results": results}
+    return {
+        "page": request.page, 
+        "limit": request.limit, 
+        "total_results": total_results, 
+        "results": results
+    }
 
-# --- NEW: Endpoint to serve a single image file ---
+# --- (Your other endpoints: /images, /api/stats, etc. remain unchanged) ---
+
 @app.get("/images/{source_id}/{webp_filename}")
 def get_image(source_id: int, webp_filename: str):
     """

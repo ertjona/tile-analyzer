@@ -4,81 +4,74 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Tile Inspector</title>
-    </head>
+    <style> /* Basic styling for layout and thumbnails */
+        body { font-family: sans-serif; padding: 20px; }
+        nav { margin-bottom: 20px; }
+        .filter-row { margin-bottom: 10px; }
+        .results-thumbnail { max-width: 200px; max-height: 200px; border: 1px solid #ddd; }
+        /* Copied modal styles from previous step */
+        .modal{display:none;position:fixed;z-index:1;left:0;top:0;width:100%;height:100%;overflow:auto;background-color:rgba(0,0,0,0.5)}.modal-content{background-color:#fefefe;margin:10% auto;padding:20px;border:1px solid #888;width:80%;max-width:900px}.inspector-body{display:flex;gap:20px}#inspector-image-container{flex-shrink:0}#inspector-details{flex-grow:1;overflow-x:auto}#inspector-image{max-width:400px;border:1px solid #ddd}pre{background-color:#eee;padding:10px;border-radius:5px}.close-button{color:#aaa;float:right;font-size:28px;font-weight:bold;cursor:pointer}
+		/* frontend/index.html */
+		/* Add these new styles inside your existing <style> tag */
+		.display-options { position: relative; display: inline-block; margin-bottom: 10px; }
+		.dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 200px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); padding: 12px 16px; z-index: 1; border-radius: 5px; }
+		.dropdown-content label { display: block; }
+		.show { display: block; }
+    </style>
+</head>
 <body>
-    <nav style="margin-bottom: 20px;">
+    <nav>
         <a href="/dashboard.html">View Statistics Dashboard »</a>
     </nav>
-	<h1>Image Tile Analysis & Inspection Platform</h1>
+    <h1>Image Tile Analysis & Inspection Platform</h1>
 
-	<div id="controls">
+    <div id="controls">
         <h2>Filter & Sort</h2>
         <form id="filter-form">
-            <label for="filter-key">Filter by:</label>
-            <select id="filter-key" name="filter-key">
-                <option value="edge_density">Edge Density</option>
-                <option value="entropy">Entropy</option>
-                <option value="laplacian">Laplacian</option>
-                <option value="avg_brightness">Avg. Brightness</option>
-            </select>
-
-            <select id="filter-op" name="filter-op">
-                <option value=">=">&gt;=</option>
-                <option value="<=">&lt;=</option>
-                <option value="==">==</option>
-                <option value=">">&gt;</option>
-                <option value="<">&lt;</option>
-                <option value="!=">!=</option>
-            </select>
-
-            <input type="number" id="filter-value" name="filter-value" step="any" placeholder="Enter value">
-
-            <br><br>
-
+            <div id="filter-container">
+                </div>
+            <button type="button" id="add-filter-btn">+ Add Filter</button>
+            <hr>
+            
             <label for="sort-key">Sort by:</label>
             <select id="sort-key" name="sort-key">
                 <option value="id">ID</option>
                 <option value="edge_density">Edge Density</option>
                 <option value="entropy">Entropy</option>
                 <option value="laplacian">Laplacian</option>
+				<option value="avg_brightness">Avg Brightness</option>
             </select>
-
             <select id="sort-order" name="sort-order">
                 <option value="asc">Ascending</option>
                 <option value="desc">Descending</option>
             </select>
             
             <br><br>
-
             <button type="submit">Apply Filters</button>
         </form>
     </div>
 
-    <hr>
+	<hr>
+
+    <div class="display-options">
+        <button id="display-options-btn">Display Options</button>
+        <div id="display-options-dropdown" class="dropdown-content">
+            </div>
+    </div>
 
     <h2>Results</h2>
     <table id="results-table">
         <thead>
-            <tr>
-                <th>ID</th>
-                <th>Source File ID</th>
-                <th>WebP Filename</th>
-                <th>Status</th>
-                <th>Entropy</th>
-                <th>Edge Density</th>
-            </tr>
-        </thead>
+            </thead>
         <tbody id="results-body">
             </tbody>
     </table>
-	
-	<div id="pagination-controls" style="margin-top: 20px; text-align: center;">
+
+    <div id="pagination-controls" style="margin-top: 20px; text-align: center;">
         <button id="prev-button" disabled>&laquo; Previous</button>
         <span id="page-info">Page 1</span>
         <button id="next-button">Next &raquo;</button>
     </div>
-
-    <script src="main.js"></script>
 
     <div id="inspector-modal" class="modal">
         <div class="modal-content">
@@ -96,53 +89,6 @@
         </div>
     </div>
 
-    <style>
-        .modal {
-            display: none; 
-            position: fixed; 
-            z-index: 1; 
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.5);
-        }
-        .modal-content {
-            background-color: #fefefe;
-            margin: 10% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-            max-width: 900px;
-        }
-        .inspector-body {
-            display: flex;
-            gap: 20px;
-        }
-        #inspector-image-container {
-            flex-shrink: 0;
-        }
-        #inspector-details {
-            flex-grow: 1;
-            overflow-x: auto;
-        }
-        #inspector-image {
-            max-width: 400px;
-            border: 1px solid #ddd;
-        }
-        pre {
-            background-color: #eee;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .close-button {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-    </style>
+    <script src="main.js"></script>
 </body>
 </html>
