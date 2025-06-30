@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse # <--- IMPORT THIS
 from fastapi.staticfiles import StaticFiles
 from typing import List, Optional, Dict, Any
 from pathlib import Path
+import numpy as np
 
 # --- Configuration ---
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -116,6 +117,61 @@ def get_image(source_id: int, webp_filename: str):
         
     # Return the image file
     return FileResponse(image_path)
+
+# --- NEW: Endpoint for a high-level summary ---
+@app.get("/api/stats/summary")
+def get_summary_stats():
+    """Returns a summary of the dataset (total files and tiles)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    total_files = cursor.execute("SELECT COUNT(*) FROM SourceFiles").fetchone()[0]
+    total_tiles = cursor.execute("SELECT COUNT(*) FROM ImageTiles").fetchone()[0]
+    
+    conn.close()
+    
+    return {
+        "total_source_files": total_files,
+        "total_image_tiles": total_tiles
+    }
+
+# --- NEW: Endpoint for detailed distribution stats of a column ---
+@app.get("/api/stats/distribution/{column_name}")
+def get_distribution_stats(column_name: str):
+    """
+    Calculates and returns descriptive statistics for a given numeric column.
+    """
+    # Validate column name to prevent SQL injection
+    allowed_columns = ["laplacian", "avg_brightness", "avg_saturation", "entropy", "edge_density"]
+    if column_name not in allowed_columns:
+        raise HTTPException(status_code=400, detail="Invalid column name for statistics.")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Fetch all non-null values from the column
+    query = f"SELECT {column_name} FROM ImageTiles WHERE {column_name} IS NOT NULL"
+    values = [row[0] for row in cursor.execute(query).fetchall()]
+    conn.close()
+    
+    if not values:
+        return {"column": column_name, "count": 0}
+
+    # Use NumPy to calculate statistics
+    np_values = np.array(values)
+    
+    return {
+        "column": column_name,
+        "count": len(np_values),
+        "mean": np.mean(np_values),
+        "std_dev": np.std(np_values),
+        "min": np.min(np_values),
+        "percentile_25": np.percentile(np_values, 25),
+        "median_50": np.median(np_values),
+        "percentile_75": np.percentile(np_values, 75),
+        "max": np.max(np_values),
+    }
+
    
 # --- NEW: Mount the static files directory ---
 # This line tells FastAPI to serve all files from the '../frontend' directory

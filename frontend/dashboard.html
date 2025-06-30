@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-g">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Tile Inspector</title>
+    <style> /* Basic styling for readability */
+        body { font-family: sans-serif; padding: 20px; }
+        .stat-card { border: 1px solid #ccc; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+        pre { background-color: #f4f4f4; padding: 10px; border-radius: 5px; }
+        nav { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">« Back to Inspector</a>
+    </nav>
+    <h1>Statistics Dashboard</h1>
+
+    <div id="kpi-summary" class="stat-card">
+        <h2>Overall Summary</h2>
+        <p id="summary-content">Loading...</p>
+    </div>
+
+    <div id="entropy-stats" class="stat-card">
+        <h2>Entropy Distribution</h2>
+        <pre id="entropy-content">Loading...</pre>
+    </div>
+
+    <div id="edge_density-stats" class="stat-card">
+        <h2>Edge Density Distribution</h2>
+        <pre id="edge_density-content">Loading...</pre>
+    </div>
+	
+    <script src="dashboard.js"></script>
+</body>
+</html>
