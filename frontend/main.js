@@ -70,7 +70,7 @@ function setupEventListeners() {
 // --- All Helper Functions ---
 
 function populateDisplayOptions() {
-    const defaultVisible = ['id', 'json_filename', 'webp_filename', 'entropy', 'edge_density'];
+    const defaultVisible = ['id', 'json_filename', 'webp_filename', 'edge_density', 'avg_brightness'];
     const container = document.getElementById('display-options-dropdown');
     let content = '';
     ALL_COLUMNS.forEach(col => {
