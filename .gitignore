@@ -1,0 +1,10 @@
+# Database - Do not track the data file
+database/analysis.db
+
+# Python specific cache files
+__pycache__/
+*.pyc
+
+# Environment and sensitive files
+.env
+venv/

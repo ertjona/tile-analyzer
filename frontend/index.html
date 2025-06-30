@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Tile Inspector</title>
+    </head>
+<body>
+    <h1>Image Tile Analysis & Inspection Platform</h1>
+
+	<div id="controls">
+        <h2>Filter & Sort</h2>
+        <form id="filter-form">
+            <label for="filter-key">Filter by:</label>
+            <select id="filter-key" name="filter-key">
+                <option value="edge_density">Edge Density</option>
+                <option value="entropy">Entropy</option>
+                <option value="laplacian">Laplacian</option>
+                <option value="avg_brightness">Avg. Brightness</option>
+            </select>
+
+            <select id="filter-op" name="filter-op">
+                <option value=">=">&gt;=</option>
+                <option value="<=">&lt;=</option>
+                <option value="==">==</option>
+                <option value=">">&gt;</option>
+                <option value="<">&lt;</option>
+                <option value="!=">!=</option>
+            </select>
+
+            <input type="number" id="filter-value" name="filter-value" step="any" placeholder="Enter value">
+
+            <br><br>
+
+            <label for="sort-key">Sort by:</label>
+            <select id="sort-key" name="sort-key">
+                <option value="id">ID</option>
+                <option value="edge_density">Edge Density</option>
+                <option value="entropy">Entropy</option>
+                <option value="laplacian">Laplacian</option>
+            </select>
+
+            <select id="sort-order" name="sort-order">
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+            </select>
+            
+            <br><br>
+
+            <button type="submit">Apply Filters</button>
+        </form>
+    </div>
+
+    <hr>
+
+    <h2>Results</h2>
+    <table id="results-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Source File ID</th>
+                <th>WebP Filename</th>
+                <th>Status</th>
+                <th>Entropy</th>
+                <th>Edge Density</th>
+            </tr>
+        </thead>
+        <tbody id="results-body">
+            </tbody>
+    </table>
+	
+	<div id="pagination-controls" style="margin-top: 20px; text-align: center;">
+        <button id="prev-button" disabled>&laquo; Previous</button>
+        <span id="page-info">Page 1</span>
+        <button id="next-button">Next &raquo;</button>
+    </div>
+
+    <script src="main.js"></script>
+
+    <div id="inspector-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Image Inspector</h2>
+            <div class="inspector-body">
+                <div id="inspector-image-container">
+                    <img id="inspector-image" src="" alt="Image Tile">
+                </div>
+                <div id="inspector-details">
+                    <h3>Metadata</h3>
+                    <pre id="inspector-metadata"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .modal {
+            display: none; 
+            position: fixed; 
+            z-index: 1; 
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 900px;
+        }
+        .inspector-body {
+            display: flex;
+            gap: 20px;
+        }
+        #inspector-image-container {
+            flex-shrink: 0;
+        }
+        #inspector-details {
+            flex-grow: 1;
+            overflow-x: auto;
+        }
+        #inspector-image {
+            max-width: 400px;
+            border: 1px solid #ddd;
+        }
+        pre {
+            background-color: #eee;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</body>
+</html>
