@@ -4,7 +4,7 @@
 let currentPage = 1;
 let currentRequestState = {
     filters: [],
-    sort: [{ key: "id", order: "asc" }],
+    sort: [{ key: "json_filename", order: "asc" }],
     page: 1,
     limit: 100
 };
@@ -87,12 +87,14 @@ function handleFilterSubmit(event) {
         }
     });
     
-    const sortKey = document.getElementById('sort-key').value;
-    const sortOrder = document.getElementById('sort-order').value;
+    // --- DELETE THE SORT LOGIC FROM HERE ---
+	// const sortKey = document.getElementById('sort-key').value;
+    // const sortOrder = document.getElementById('sort-order').value;
 
     currentRequestState = {
         filters: filters,
-        sort: [{ key: sortKey, order: sortOrder }],
+        // The sort state is now handled by handleSortClick, so we just keep the existing sort order
+        sort: currentRequestState.sort,
         page: currentPage,
         limit: 100
     };
@@ -135,6 +137,9 @@ function setupEventListeners() {
             modal.style.display = "none";
         }
     });
+	
+	// NEW: Add a listener to the table header for sorting
+    document.querySelector('#results-table thead').addEventListener('click', handleSortClick);
 }
 
 // --- All Helper Functions ---
@@ -172,11 +177,11 @@ function addFilterRow() {
             <option value="avg_saturation">Avg. Saturation</option>
         </select>
         <select class="filter-op">
-            <option value=">=">&ge;</option>
-            <option value="<=">&le;</option>
-            <option value="==">==</option>
             <option value=">">&gt;</option>
             <option value="<">&lt;</option>
+			<option value=">=">&ge;</option>
+            <option value="<=">&le;</option>
+			<option value="==">==</option>
             <option value="!=">!=</option>
         </select>
         <input type="number" class="filter-value" step="any" placeholder="Enter value">
@@ -214,6 +219,26 @@ function handleRowClick(event) {
     modal.style.display = "block";
 }
 
+// Add this new function to main.js
+
+function handleSortClick(event) {
+    const headerCell = event.target.closest('th');
+    if (!headerCell || !headerCell.dataset.sortKey) return; // Exit if not a sortable header
+
+    const sortKey = headerCell.dataset.sortKey;
+    let sortOrder = 'asc';
+
+    // If we're already sorting by this key, reverse the order
+    const currentSort = currentRequestState.sort[0];
+    if (currentSort && currentSort.key === sortKey) {
+        sortOrder = currentSort.order === 'asc' ? 'desc' : 'asc';
+    }
+
+    // Update the state and re-fetch
+    currentRequestState.sort = [{ key: sortKey, order: sortOrder }];
+    fetchAndDisplayTiles();
+}
+
 async function fetchAndDisplayTiles() {
     const tableBody = document.getElementById('results-body');
     tableBody.innerHTML = `<tr><td colspan="12">Loading...</td></tr>`; 
@@ -243,22 +268,51 @@ async function fetchAndDisplayTiles() {
 function renderTable(data) {
     const tableHead = document.querySelector('#results-table thead');
     const tableBody = document.getElementById('results-body');
-	const summaryElement = document.getElementById('results-summary'); // Get the new element
+    const summaryElement = document.getElementById('results-summary');
     tableBody.innerHTML = '';
 
+    // Step 1: Get the currently active sort from our global state object.
+    // If no sort is active yet, we default to sorting by 'id' ascending.
+    const currentSort = currentRequestState.sort[0] || { key: 'id', order: 'asc' };
+
+    // Step 2: Get the list of columns the user wants to see from the checkboxes.
     const visibleColumns = Array.from(document.querySelectorAll('.column-toggle:checked')).map(cb => cb.value);
 
-    tableHead.innerHTML = `<tr><th>Thumbnail</th>${visibleColumns.map(key => `<th>${ALL_COLUMNS.find(c => c.key === key).label}</th>`).join('')}</tr>`;
+    // --- This is the main new logic block ---
+    // Step 3: Build the header HTML string dynamically.
+    let headerHtml = '<tr><th>Thumbnail</th>'; // Start with the non-sortable Thumbnail column.
+
+    visibleColumns.forEach(key => {
+        // Find the full column object (which has the label) for the current key.
+        const column = ALL_COLUMNS.find(c => c.key === key);
+        let sortIndicator = ''; // Default to no arrow.
+
+        // If the current column we are building is the one we are sorting by...
+        if (column.key === currentSort.key) {
+            // ...then add the correct up or down arrow.
+            sortIndicator = currentSort.order === 'asc' ? ' &uarr;' : ' &darr;';
+        }
+        
+        // Create the full <th> tag with the data-sort-key attribute, the label, and the arrow.
+        headerHtml += `<th data-sort-key="${column.key}" style="cursor: pointer;">${column.label}${sortIndicator}</th>`;
+    });
+    headerHtml += '</tr>';
+    
+    // Step 4: Set the inner HTML of the table header to our newly created string.
+    tableHead.innerHTML = headerHtml;
+    // --- End of the main new logic block ---
+
 
     if (data.results && data.results.length > 0) {
-		// NEW: Update the results summary text
         summaryElement.textContent = `Found ${data.total_results.toLocaleString()} matching tiles.`;
 
+        // The rest of the function for creating the table body and pagination remains the same...
         data.results.forEach(tile => {
             const row = document.createElement('tr');
             row.dataset.tileData = JSON.stringify(tile);
             
             let rowHtml = `<td><img src="/images/${tile.source_file_id}/${tile.webp_filename}" class="results-thumbnail" loading="lazy"></td>`;
+
             visibleColumns.forEach(key => {
                 let value = tile[key];
                 if (value == null) {
@@ -277,9 +331,7 @@ function renderTable(data) {
         document.getElementById('prev-button').disabled = data.page <= 1;
         document.getElementById('next-button').disabled = data.page >= totalPages;
     } else {
-		// NEW: Update the summary text when there are no results
         summaryElement.textContent = 'Found 0 matching tiles.';
-        
         const columnCount = document.querySelectorAll('.column-toggle:checked').length + 1;
         tableBody.innerHTML = `<tr><td colspan="${columnCount}">No results found.</td></tr>`;
         document.getElementById('page-info').textContent = 'Page 1 of 1';
