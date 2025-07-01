@@ -48,12 +48,12 @@ def process_single_tile(filepath, skip_measurements=None):
 
         height, width = img.shape[:2]
         
-        # Check minimum dimensions (240px requirement)
-        if width < 240 or height < 240:
+        # Check minimum dimensions (256px requirement)
+        if width < 256 or height < 256:
             logging.warning(f"Tile {filename} too small ({width}x{height})")
             data.update({
                 "status": "warning",
-                "error_message": f"Tile dimensions {width}x{height} < 240px minimum",
+                "error_message": f"Tile dimensions {width}x{height} < 256px minimum",
                 "width": width,
                 "height": height
             })
