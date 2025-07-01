@@ -6,7 +6,7 @@ let currentRequestState = {
     filters: [],
     sort: [{ key: "id", order: "asc" }],
     page: 1,
-    limit: 50
+    limit: 100
 };
 let currentResultsData = [];
 const ALL_COLUMNS = [
@@ -18,6 +18,7 @@ const ALL_COLUMNS = [
     { key: 'row', label: 'Row' },
     { key: 'size', label: 'Size' },
     { key: 'entropy', label: 'Entropy' },
+	{ key: 'avg_saturation', label: 'Saturation' },
     { key: 'laplacian', label: 'Laplacian' },
     { key: 'avg_brightness', label: 'Avg Brightness' },
     { key: 'edge_density', label: 'Edge Density' }
@@ -70,7 +71,7 @@ function setupEventListeners() {
 // --- All Helper Functions ---
 
 function populateDisplayOptions() {
-    const defaultVisible = ['id', 'json_filename', 'webp_filename', 'edge_density', 'avg_brightness'];
+    const defaultVisible = ['json_filename', 'webp_filename', 'edge_density', 'avg_brightness'];
     const container = document.getElementById('display-options-dropdown');
     let content = '';
     ALL_COLUMNS.forEach(col => {
@@ -96,6 +97,7 @@ function addFilterRow() {
             <option value="entropy">Entropy</option>
             <option value="laplacian">Laplacian</option>
             <option value="avg_brightness">Avg. Brightness</option>
+			<option value="avg_saturation">Avg. Saturation</option>
         </select>
         <select class="filter-op">
             <option value=">=">&ge;</option>
@@ -132,7 +134,7 @@ function handleFilterSubmit(event) {
         filters: filters,
         sort: [{ key: sortKey, order: sortOrder }],
         page: currentPage,
-        limit: 50
+        limit: 100
     };
     
     fetchAndDisplayTiles();
@@ -212,7 +214,7 @@ function renderTable(data) {
                 if (value == null) {
                     value = 'N/A';
                 } else if (typeof value === 'number' && !['id', 'col', 'row', 'size', 'source_file_id'].includes(key)) {
-                    value = value.toFixed(4);
+                    value = value.toFixed(6);
                 }
                 rowHtml += `<td>${value}</td>`;
             });

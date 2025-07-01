@@ -17,6 +17,9 @@
 		.dropdown-content { display: none; position: absolute; background-color: #f9f9f9; min-width: 200px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); padding: 12px 16px; z-index: 1; border-radius: 5px; }
 		.dropdown-content label { display: block; }
 		.show { display: block; }
+		table { border:1px solid black; }
+		th { border:1px solid black; padding:2px;}
+		td { border:1px solid black; padding:2px;}
     </style>
 </head>
 <body>
@@ -40,6 +43,7 @@
                 <option value="entropy">Entropy</option>
                 <option value="laplacian">Laplacian</option>
 				<option value="avg_brightness">Avg Brightness</option>
+				<option value="avg_saturation">Avg Saturation</option>
             </select>
             <select id="sort-order" name="sort-order">
                 <option value="asc">Ascending</option>
