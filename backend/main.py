@@ -44,46 +44,40 @@ def get_db_connection():
 
 # --- API Endpoints ---
 
-## MODIFIED: Changed from @app.get to @app.post and updated the function
 @app.post("/api/tiles")
 def search_tiles(request: TilesRequest) -> Dict[str, Any]:
-    """
-    Retrieves a paginated list of image tiles based on a structured JSON request.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # MODIFIED: Query now JOINS with SourceFiles and explicitly lists columns
     base_query = "SELECT T.*, S.json_filename FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
     count_query = "SELECT COUNT(T.id) FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
     
     where_clauses = []
     params = []
 
-    # MODIFIED: Logic now reads from the request body's filter list
     if request.filters:
         for f in request.filters:
             valid_operators = {">", "<", ">=", "<=", "==", "!="}
             if f.op in valid_operators:
-                # Use "T." prefix to specify the ImageTiles table in the JOIN
-                where_clauses.append(f"T.{f.key} {f.op} ?")
+                # MODIFIED: Backend now intelligently adds the correct prefix
+                prefix = "S" if f.key == "json_filename" else "T"
+                where_clauses.append(f"{prefix}.{f.key} {f.op} ?")
                 params.append(f.value)
             else:
-                # Skip invalid operators
                 continue
 
-    # MODIFIED: Sorting logic now reads from the request body's sort list
     order_by_parts = []
-    for s in request.sort:
-        order = s.order.upper() if s.order.lower() in ['asc', 'desc'] else 'ASC'
-        # TODO: Add validation for sort key to prevent SQL injection
-        order_by_parts.append(f"T.{s.key} {order}")
-    order_by_clause = "ORDER BY " + ", ".join(order_by_parts)
+    if request.sort:
+        for s in request.sort:
+            order = s.order.upper() if s.order.lower() in ['asc', 'desc'] else 'ASC'
+            prefix = "S" if s.key == "json_filename" else "T"
+            order_by_parts.append(f"{prefix}.{s.key} {order}")
+    
+    order_by_clause = "ORDER BY " + ", ".join(order_by_parts) if order_by_parts else "ORDER BY T.id ASC"
 
     pagination_clause = "LIMIT ? OFFSET ?"
     offset = (request.page - 1) * request.limit
     
-    # Build the full query
     final_query = base_query
     if where_clauses:
         final_query += f" WHERE {' AND '.join(where_clauses)}"
@@ -138,6 +132,19 @@ def get_image(source_id: int, webp_filename: str):
         
     # Return the image file
     return FileResponse(image_path)
+
+# --- NEW: Endpoint to get a list of all source JSON filenames ---
+@app.get("/api/source_files")
+def get_source_files() -> List[str]:
+    """Retrieves a list of all unique json_filename values."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # The ORDER BY clause ensures the list is sorted alphabetically
+    cursor.execute("SELECT json_filename FROM SourceFiles ORDER BY json_filename ASC")
+    # We use a list comprehension to flatten the list of tuples into a simple list of strings
+    filenames = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return filenames
 
 # --- NEW: Endpoint for a high-level summary ---
 @app.get("/api/stats/summary")

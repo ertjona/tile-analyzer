@@ -18,9 +18,9 @@ const ALL_COLUMNS = [
     { key: 'row', label: 'Row' },
     { key: 'size', label: 'Size' },
     { key: 'entropy', label: 'Entropy' },
-	{ key: 'avg_saturation', label: 'Saturation' },
     { key: 'laplacian', label: 'Laplacian' },
     { key: 'avg_brightness', label: 'Avg Brightness' },
+    { key: 'avg_saturation', label: 'Avg Saturation' },
     { key: 'edge_density', label: 'Edge Density' }
 ];
 
@@ -29,8 +29,77 @@ window.onload = function() {
     setupEventListeners();
     populateDisplayOptions();
     addFilterRow();
+	fetchSourceFiles(); // NEW: Fetch filenames for the dropdown
     fetchAndDisplayTiles();
 };
+
+
+function setupEventListeners() {
+    // ... (This function remains the same as before) ...
+    document.getElementById('filter-form').addEventListener('submit', handleFilterSubmit);
+    document.getElementById('add-filter-btn').addEventListener('click', addFilterRow);
+    // ... etc.
+}
+
+
+// --- NEW: Function to fetch filenames and populate the dropdown ---
+async function fetchSourceFiles() {
+    try {
+        const response = await fetch('/api/source_files');
+        if (!response.ok) throw new Error('Failed to fetch source files.');
+        const filenames = await response.json();
+        
+        const selectElement = document.getElementById('filename-filter');
+        filenames.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            selectElement.appendChild(option);
+        });
+    } catch (error) {
+        console.error("Error fetching source files:", error);
+    }
+}
+
+function handleFilterSubmit(event) {
+    event.preventDefault(); 
+    currentPage = 1; 
+
+    const filters = [];
+    
+    // Check the dedicated filename filter
+    const filenameFilter = document.getElementById('filename-filter').value;
+    if (filenameFilter) {
+        // MODIFIED: Send a clean key without the 'S.' prefix
+        filters.push({ key: 'json_filename', op: '==', value: filenameFilter });
+    }
+
+    // Read from multiple metric filter rows
+    document.querySelectorAll('.metric-filter-row').forEach(row => {
+        const key = row.querySelector('.filter-key').value;
+        const op = row.querySelector('.filter-op').value;
+        const value = row.querySelector('.filter-value').value;
+
+        const numericValue = parseFloat(value);
+        if (!isNaN(numericValue)) {
+            // MODIFIED: Send a clean key without the 'T.' prefix
+            filters.push({ key: key, op: op, value: numericValue });
+        }
+    });
+    
+    const sortKey = document.getElementById('sort-key').value;
+    const sortOrder = document.getElementById('sort-order').value;
+
+    currentRequestState = {
+        filters: filters,
+        sort: [{ key: sortKey, order: sortOrder }],
+        page: currentPage,
+        limit: 100
+    };
+    
+    fetchAndDisplayTiles();
+}
+
 
 function setupEventListeners() {
     document.getElementById('filter-form').addEventListener('submit', handleFilterSubmit);
@@ -89,7 +158,10 @@ function populateDisplayOptions() {
 function addFilterRow() {
     const container = document.getElementById('filter-container');
     const newFilterRow = document.createElement('div');
-    newFilterRow.className = 'filter-row';
+    // --- BEFORE ---
+	// newFilterRow.className = 'filter-row';
+	// --- AFTER ---
+	newFilterRow.className = 'filter-row metric-filter-row'; // Add the new specific class
     newFilterRow.innerHTML = `
         <label>Filter by:</label>
         <select class="filter-key">
@@ -97,7 +169,7 @@ function addFilterRow() {
             <option value="entropy">Entropy</option>
             <option value="laplacian">Laplacian</option>
             <option value="avg_brightness">Avg. Brightness</option>
-			<option value="avg_saturation">Avg. Saturation</option>
+            <option value="avg_saturation">Avg. Saturation</option>
         </select>
         <select class="filter-op">
             <option value=">=">&ge;</option>
@@ -113,32 +185,6 @@ function addFilterRow() {
     container.appendChild(newFilterRow);
 }
 
-function handleFilterSubmit(event) {
-    event.preventDefault(); 
-    currentPage = 1; 
-
-    const filters = [];
-    document.querySelectorAll('.filter-row').forEach(row => {
-        const key = row.querySelector('.filter-key').value;
-        const op = row.querySelector('.filter-op').value;
-        const value = row.querySelector('.filter-value').value;
-        if (value !== '') {
-            filters.push({ key, op, value: parseFloat(value) });
-        }
-    });
-    
-    const sortKey = document.getElementById('sort-key').value;
-    const sortOrder = document.getElementById('sort-order').value;
-
-    currentRequestState = {
-        filters: filters,
-        sort: [{ key: sortKey, order: sortOrder }],
-        page: currentPage,
-        limit: 100
-    };
-    
-    fetchAndDisplayTiles();
-}
 
 function handlePrevClick() {
     if (currentPage > 1) {
