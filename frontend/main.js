@@ -243,6 +243,7 @@ async function fetchAndDisplayTiles() {
 function renderTable(data) {
     const tableHead = document.querySelector('#results-table thead');
     const tableBody = document.getElementById('results-body');
+	const summaryElement = document.getElementById('results-summary'); // Get the new element
     tableBody.innerHTML = '';
 
     const visibleColumns = Array.from(document.querySelectorAll('.column-toggle:checked')).map(cb => cb.value);
@@ -250,6 +251,9 @@ function renderTable(data) {
     tableHead.innerHTML = `<tr><th>Thumbnail</th>${visibleColumns.map(key => `<th>${ALL_COLUMNS.find(c => c.key === key).label}</th>`).join('')}</tr>`;
 
     if (data.results && data.results.length > 0) {
+		// NEW: Update the results summary text
+        summaryElement.textContent = `Found ${data.total_results.toLocaleString()} matching tiles.`;
+
         data.results.forEach(tile => {
             const row = document.createElement('tr');
             row.dataset.tileData = JSON.stringify(tile);
@@ -273,6 +277,9 @@ function renderTable(data) {
         document.getElementById('prev-button').disabled = data.page <= 1;
         document.getElementById('next-button').disabled = data.page >= totalPages;
     } else {
+		// NEW: Update the summary text when there are no results
+        summaryElement.textContent = 'Found 0 matching tiles.';
+        
         const columnCount = document.querySelectorAll('.column-toggle:checked').length + 1;
         tableBody.innerHTML = `<tr><td colspan="${columnCount}">No results found.</td></tr>`;
         document.getElementById('page-info').textContent = 'Page 1 of 1';
