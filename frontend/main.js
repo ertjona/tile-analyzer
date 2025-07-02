@@ -109,6 +109,7 @@ function setupEventListeners() {
     document.getElementById('prev-button').addEventListener('click', handlePrevClick);
     document.getElementById('next-button').addEventListener('click', handleNextClick);
     document.getElementById('results-body').addEventListener('click', handleRowClick);
+	document.getElementById('go-to-page-btn').addEventListener('click', handleGoToPage);
 
     document.getElementById('filter-container').addEventListener('click', function(event) {
         if (event.target.classList.contains('remove-filter-btn')) {
@@ -238,6 +239,26 @@ function handleSortClick(event) {
     // Update the state and re-fetch
     currentRequestState.sort = [{ key: sortKey, order: sortOrder }];
     fetchAndDisplayTiles();
+}
+
+// Add this new function to main.js
+
+function handleGoToPage() {
+    const pageInput = document.getElementById('page-input');
+    const pageNum = parseInt(pageInput.value, 10);
+
+    // Get the total number of pages from the page-info span
+    const pageInfo = document.getElementById('page-info').textContent;
+    const totalPages = parseInt(pageInfo.split(' of ')[1], 10);
+
+    // Validate the user's input
+    if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
+        currentPage = pageNum;
+        fetchAndDisplayTiles();
+        pageInput.value = ''; // Clear the input box after jumping
+    } else {
+        alert(`Invalid page number. Please enter a number between 1 and ${totalPages}.`);
+    }
 }
 
 async function fetchAndDisplayTiles() {

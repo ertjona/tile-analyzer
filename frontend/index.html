@@ -56,7 +56,7 @@
         <div id="display-options-dropdown" class="dropdown-content">
             </div>
     </div>
-	<div id="results-summary" style="margin-bottom: 10px;"></div>
+	<div id="results-summary" style="margin-bottom: 10px; "></div>
     <table id="results-table">
         <thead>
             </thead>
@@ -64,10 +64,13 @@
             </tbody>
     </table>
 
-    <div id="pagination-controls" style="margin-top: 20px; text-align: center;">
+    <div id="pagination-controls" style="margin-top: 20px; ">
         <button id="prev-button" disabled>&laquo; Previous</button>
         <span id="page-info">Page 1</span>
         <button id="next-button">Next &raquo;</button>
+		
+		<input type="number" id="page-input" style="width: 60px; margin-left: 20px;" placeholder="Page">
+		<button id="go-to-page-btn">Go</button>
     </div>
 
     <div id="inspector-modal" class="modal">
