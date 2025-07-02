@@ -145,7 +145,7 @@ function setupEventListeners() {
 // --- All Helper Functions ---
 
 function populateDisplayOptions() {
-    const defaultVisible = ['json_filename', 'webp_filename', 'edge_density', 'avg_brightness'];
+    const defaultVisible = ['json_filename', 'webp_filename', 'edge_density', 'avg_brightness', 'size'];
     const container = document.getElementById('display-options-dropdown');
     let content = '';
     ALL_COLUMNS.forEach(col => {
@@ -175,6 +175,7 @@ function addFilterRow() {
             <option value="laplacian">Laplacian</option>
             <option value="avg_brightness">Avg. Brightness</option>
             <option value="avg_saturation">Avg. Saturation</option>
+			<option value="size">Size</option>
         </select>
         <select class="filter-op">
             <option value=">">&gt;</option>

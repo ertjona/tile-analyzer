@@ -1,8 +1,9 @@
 // frontend/dashboard.js
 window.onload = function() {
     fetchSummary();
-    fetchDistributionStats('entropy');
     fetchDistributionStats('edge_density');
+	fetchDistributionStats('entropy');
+	fetchDistributionStats('laplacian');
 };
 
 async function fetchSummary() {
@@ -36,13 +37,13 @@ async function fetchDistributionStats(columnName) {
 
         // This part will now only run if data exists
         let statsHtml = `Count       : ${data.count.toLocaleString()}\n`;
-        statsHtml +=    `Mean        : ${data.mean.toFixed(4)}\n`;
-        statsHtml +=    `Std. Dev.   : ${data.std_dev.toFixed(4)}\n\n`;
-        statsHtml +=    `Min         : ${data.min.toFixed(4)}\n`;
-        statsHtml +=    `25th Pctl.  : ${data.percentile_25.toFixed(4)}\n`;
-        statsHtml +=    `Median      : ${data.median_50.toFixed(4)}\n`;
-        statsHtml +=    `75th Pctl.  : ${data.percentile_75.toFixed(4)}\n`;
-        statsHtml +=    `Max         : ${data.max.toFixed(4)}`;
+        statsHtml +=    `Mean        : ${data.mean.toFixed(6)}\n`;
+        statsHtml +=    `Std. Dev.   : ${data.std_dev.toFixed(6)}\n\n`;
+        statsHtml +=    `Min         : ${data.min.toFixed(6)}\n`;
+        statsHtml +=    `25th Pctl.  : ${data.percentile_25.toFixed(6)}\n`;
+        statsHtml +=    `Median      : ${data.median_50.toFixed(6)}\n`;
+        statsHtml +=    `75th Pctl.  : ${data.percentile_75.toFixed(6)}\n`;
+        statsHtml +=    `Max         : ${data.max.toFixed(6)}`;
         
         content.textContent = statsHtml;
     } catch (error) {
