@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spatial Heatmap Analysis</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        nav { margin-bottom: 20px; }
+        .controls { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; }
+        canvas { border: 1px solid black; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">« Back to Inspector</a>
+    </nav>
+    <h1>Spatial Heatmap Analysis</h1>
+
+    <div class="controls">
+        <label for="filename-select">Select Source File:</label>
+        <select id="filename-select">
+            <option value="">-- Please select a file --</option>
+        </select>
+        <button id="generate-btn" style="margin-left: 20px;">Generate Heatmap</button>
+    </div>
+
+    <div id="loading-message" style="display: none;">
+        <p>Loading heatmap data, this may take a moment...</p>
+    </div>
+    
+    <canvas id="heatmap-canvas" width="800" height="600"></canvas>
+
+    <script src="heatmap.js"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+{
+  "default_color": "#CCCCCC",
+  "rules": [
+    {
+      "name": "ThinPrep marker",
+      "color": "#000000",
+      "rule_group": {
+        "logical_op": "OR",
+        "conditions": [
+          { "key": "avg_brightness", "op": "<=", "value": 90.1 },
+		  { "key": "laplacian", "op": ">", "value": 258 }
+        ]
+      }
+    },
+	{
+      "name": "Ring",
+      "color": "purple",
+      "rule_group": {
+        "logical_op": "OR",
+        "conditions": [
+		  { "key": "avg_brightness", "op": "<", "value": 200 }
+        ]
+      }
+    },
+    {
+      "name": "Detailed Tiles",
+      "color": "yellow",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          { "key": "edge_density", "op": ">=", "value": 0.0019378662109375 }
+        ]
+      }
+    },
+    {
+      "name": "Blurry Tiles",
+      "color": "#999999",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          { "key": "edge_density", "op": "==", "value": 0 }
+        ]
+      }
+    }
+  ]
+}

@@ -200,8 +200,110 @@ def get_distribution_stats(column_name: str):
         "max": np.max(np_values),
     }
 
-   
-# --- NEW: Mount the static files directory ---
+# In backend/main.py
+
+# ... (keep all your existing imports and Pydantic models) ...
+# ... (No new Python libraries are needed for this step) ...
+
+# NEW: Define Pydantic models for the heatmap request
+class HeatmapCondition(BaseModel):
+    key: str
+    op: str
+    value: Any
+
+class RuleGroup(BaseModel):
+    logical_op: str
+    conditions: List[HeatmapCondition]
+
+class HeatmapRule(BaseModel):
+    color: str
+    rule_group: RuleGroup
+
+class HeatmapRulesConfig(BaseModel):
+    default_color: str
+    rules: List[HeatmapRule]
+
+class HeatmapRequest(BaseModel):
+    json_filename: str
+    rules_config: HeatmapRulesConfig
+
+
+# ... (keep your get_db_connection, search_tiles, get_image, and stats endpoints) ...
+
+
+# --- NEW: Endpoint to generate heatmap data ---
+@app.post("/api/heatmap")
+def generate_heatmap(request: HeatmapRequest) -> Dict[str, Any]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Get all tiles for the specified JSON file
+    query = "SELECT T.* FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id WHERE S.json_filename = ?"
+    try:
+        tiles = [dict(row) for row in cursor.execute(query, (request.json_filename,)).fetchall()]
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    finally:
+        conn.close()
+
+    if not tiles:
+        return {"grid_width": 0, "grid_height": 0, "heatmap_data": []}
+
+    # Determine grid size
+    max_col = max(t['col'] for t in tiles)
+    max_row = max(t['row'] for t in tiles)
+    grid_width = max_col + 1
+    grid_height = max_row + 1
+
+    # Initialize grid with default color
+    heatmap_data = [request.rules_config.default_color] * (grid_width * grid_height)
+
+    # Dictionary of operators for easy lookup
+    ops = {'>': (lambda a, b: a > b), '<': (lambda a, b: a < b), '>=': (lambda a, b: a >= b),
+           '<=': (lambda a, b: a <= b), '==': (lambda a, b: a == b), '!=': (lambda a, b: a != b)}
+
+    # Process each tile against the rules
+    for tile in tiles:
+        for rule in request.rules_config.rules:
+            is_match = evaluate_rule_group(tile, rule.rule_group, ops)
+            if is_match:
+                # Set color and break to next tile (rule priority)
+                index = tile['row'] * grid_width + tile['col']
+                heatmap_data[index] = rule.color
+                break
+    
+    return {
+        "grid_width": grid_width,
+        "grid_height": grid_height,
+        "heatmap_data": heatmap_data
+    }
+
+# NEW HELPER FUNCTION: This can be placed right after the heatmap endpoint
+def evaluate_rule_group(tile: Dict, group: RuleGroup, ops: Dict) -> bool:
+    """Evaluates a group of conditions against a tile's data."""
+    results = []
+    for cond in group.conditions:
+        if cond.key in tile and tile[cond.key] is not None:
+            tile_val = tile[cond.key]
+            op_func = ops.get(cond.op)
+            if op_func and op_func(tile_val, cond.value):
+                results.append(True)
+            else:
+                results.append(False)
+        else:
+            results.append(False) # Key not present or null, condition is false
+
+    if group.logical_op.upper() == "AND":
+        return all(results)
+    elif group.logical_op.upper() == "OR":
+        return any(results)
+    return False
+
+
+# --- (The app.mount line remains at the very bottom) ---
+# NEW: We need to tell FastAPI it can serve files from the /config directory
+app.mount("/config", StaticFiles(directory="config"), name="config")
+
 # This line tells FastAPI to serve all files from the '../frontend' directory
 # when a request is made to the root URL ("/").
 # The html=True argument makes it serve index.html for the root path.
