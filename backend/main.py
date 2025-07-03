@@ -1,15 +1,19 @@
 # backend/main.py
 
 import sqlite3
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
+from sse_starlette.sse import EventSourceResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import numpy as np
 from typing import List, Optional, Any, Dict
-
-## NEW: Import Pydantic's BaseModel to define the request structure
 from pydantic import BaseModel
+import asyncio
+import re
+from datetime import datetime
+import os
+import json # <-- ENSURE THIS LINE IS PRESENT
 
 # --- Configuration ---
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -33,6 +37,9 @@ class TilesRequest(BaseModel):
     page: int = 1
     limit: int = 50
 
+# --- Add this new Pydantic model with your others ---
+class IngestionRequest(BaseModel):
+    folder_path: str
 
 # --- Helper Functions ---
 def get_db_connection():
@@ -105,6 +112,99 @@ def search_tiles(request: TilesRequest) -> Dict[str, Any]:
         "results": results
     }
 
+@app.post("/api/ingest")
+async def start_ingestion(request: Request, ingestion_request: IngestionRequest):
+    """
+    Starts an ingestion process and streams logs back to the client.
+    """
+    async def log_generator():
+        """A generator function that yields log messages."""
+        folder_path = ingestion_request.folder_path
+        yield f"data: Starting ingestion for folder: {folder_path}\n\n"
+        await asyncio.sleep(0.1)
+
+        if not os.path.isdir(folder_path):
+            yield f"data: ERROR: Folder not found.\n\n"
+            return
+
+        try:
+            file_pattern = r'.*\.json'
+            filename_re = re.compile(file_pattern)
+            all_files_in_dir = os.listdir(folder_path)
+            json_files = [os.path.join(folder_path, f) for f in all_files_in_dir if filename_re.fullmatch(f)]
+        except Exception as e:
+            yield f"data: ERROR: Could not read folder contents: {e}\n\n"
+            return
+            
+        if not json_files:
+            yield f"data: No new JSON files found to process.\n\n"
+            return
+
+        yield f"data: Found {len(json_files)} JSON files to process.\n\n"
+        await asyncio.sleep(0.1)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        for file_path in json_files:
+            filename = os.path.basename(file_path)
+            
+            # Idempotency Check
+            cursor.execute("SELECT id FROM SourceFiles WHERE json_filename = ?", (filename,))
+            if cursor.fetchone():
+                yield f"data: Skipping '{filename}', already ingested.\n\n"
+                await asyncio.sleep(0.1)
+                continue
+
+            yield f"data: Processing '{filename}'...\n\n"
+            await asyncio.sleep(0.1)
+
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                # Insert into SourceFiles
+                image_directory = data.get("image_directory", "")
+                ingested_at_str = datetime.now().isoformat()
+                cursor.execute(
+                    "INSERT INTO SourceFiles (json_filename, image_directory, ingested_at) VALUES (?, ?, ?)",
+                    (filename, image_directory, ingested_at_str)
+                )
+                source_file_id = cursor.lastrowid
+
+                # Insert tiles
+                tiles = data.get("tiles", {})
+                tile_count = 0
+                for tile_name, attributes in tiles.items():
+                    if not isinstance(attributes, dict): continue
+                    tile_values = (
+                        source_file_id, tile_name, attributes.get('status'), attributes.get('col'),
+                        attributes.get('row'), attributes.get('size'), attributes.get('laplacian'),
+                        attributes.get('avg_brightness'), attributes.get('avg_saturation'),
+                        attributes.get('entropy'), attributes.get('edge_density')
+                    )
+                    cursor.execute(
+                        '''INSERT INTO ImageTiles (source_file_id, webp_filename, status, col, row, size, 
+                                                  laplacian, avg_brightness, avg_saturation, entropy, edge_density)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        tile_values
+                    )
+                    tile_count += 1
+                
+                conn.commit()
+                yield f"data: SUCCESS: Ingested '{filename}' with {tile_count} tiles.\n\n"
+                await asyncio.sleep(0.1)
+
+            except Exception as e:
+                yield f"data: ERROR: Failed to process '{filename}': {e}\n\n"
+                await asyncio.sleep(0.1)
+                conn.rollback()
+
+        conn.close()
+        yield f"data: Ingestion process complete.\n\n"
+
+    return EventSourceResponse(log_generator())
+    
 # --- (Your other endpoints: /images, /api/stats, etc. remain unchanged) ---
 
 @app.get("/images/{source_id}/{webp_filename}")

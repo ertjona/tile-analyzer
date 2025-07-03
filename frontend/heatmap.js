@@ -83,7 +83,7 @@ window.onload = function() {
     function renderHeatmap(data) {
         const canvas = document.getElementById('heatmap-canvas');
         const ctx = canvas.getContext('2d');
-        const tileSize = 3; // Size of each tile in pixels on the canvas
+        const tileSize = 1; // Size of each tile in pixels on the canvas
 
         if (data.grid_width === 0) {
             console.log("No data to render.");
