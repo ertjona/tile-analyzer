@@ -181,12 +181,13 @@ async def start_ingestion(request: Request, ingestion_request: IngestionRequest)
                         source_file_id, tile_name, attributes.get('status'), attributes.get('col'),
                         attributes.get('row'), attributes.get('size'), attributes.get('laplacian'),
                         attributes.get('avg_brightness'), attributes.get('avg_saturation'),
-                        attributes.get('entropy'), attributes.get('edge_density')
+                        attributes.get('entropy'), attributes.get('edge_density'),
+                        attributes.get('foreground_ratio') # Add the new value
                     )
                     cursor.execute(
                         '''INSERT INTO ImageTiles (source_file_id, webp_filename, status, col, row, size, 
-                                                  laplacian, avg_brightness, avg_saturation, entropy, edge_density)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                                  laplacian, avg_brightness, avg_saturation, entropy, edge_density, foreground_ratio)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                         tile_values
                     )
                     tile_count += 1

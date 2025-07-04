@@ -1,0 +1,88 @@
+{
+	"json_filename": "fgtest.json",
+	"rules_config": {
+		"default_color": "#CCCCCC",
+		"rules": [
+			{
+				"color": "#696969",
+				"rule_group": {
+					"logical_op": "OR",
+					"conditions": [
+						{
+							"key": "foreground_ratio",
+							"op": ">=",
+							"value": 0.95
+						}
+					]
+				}
+			},
+			{
+				"color": "#cccccc",
+				"rule_group": {
+					"logical_op": "AND",
+					"conditions": [
+						{
+							"key": "foreground_ratio",
+							"op": "==",
+							"value": 0
+						}
+					]
+				}
+			},
+			{
+				"color": "#2e86c1",
+				"rule_group": {
+					"logical_op": "AND",
+					"conditions": [
+						{
+							"key": "foreground_ratio",
+							"op": ">",
+							"value": 0
+						},
+						{
+							"key": "edge_density",
+							"op": ">=",
+							"value": 0.002
+						}
+					]
+				}
+			},
+			{
+				"color": "#5dade2",
+				"rule_group": {
+					"logical_op": "AND",
+					"conditions": [
+						{
+							"key": "foreground_ratio",
+							"op": ">",
+							"value": 0
+						},
+						{
+							"key": "edge_density",
+							"op": ">",
+							"value": 0
+						}
+					]
+				}
+			},
+			{
+				"color": "#d6eaf8",
+				"rule_group": {
+					"logical_op": "AND",
+					"conditions": [
+						{
+							"key": "foreground_ratio",
+							"op": ">",
+							"value": 0
+						},
+						{
+							"key": "edge_density",
+							"op": "==",
+							"value": 0
+						}
+					]
+				}
+			}
+		]
+	}
+}

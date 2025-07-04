@@ -74,7 +74,8 @@ def process_single_tile(filepath, skip_measurements=None):
             "avg_brightness": lambda: gray_img.mean(),
             "avg_saturation": lambda: np.mean(hsv_img[:, :, 1]) / 255.0,
             "entropy": lambda: shannon_entropy(gray_img),
-            "edge_density": lambda: calculate_edge_density(gray_img)
+            "edge_density": lambda: calculate_edge_density(gray_img),
+            "foreground_ratio": lambda: calculate_foreground_ratio(hsv_img) # <-- Add this line
         }
         
         # Execute measurements
@@ -109,6 +110,24 @@ def calculate_edge_density(gray_img):
     edges = cv2.Canny(gray_img, lower_thresh, upper_thresh)
     logging.debug(f"Mean of Edges: {np.mean(edges)}")
     return np.mean(edges) / 255.0
+
+# Add your new function (modified to be a pure function)
+def calculate_foreground_ratio(hsv, lower_white=(0, 0, 200), upper_white=(180, 20, 255), kernel_size=3):
+    """Calculates and returns the foreground ratio for a given image."""
+    #hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    
+    lower_white_np = np.array(lower_white, dtype=np.uint8)
+    upper_white_np = np.array(upper_white, dtype=np.uint8)
+    mask_bg = cv2.inRange(hsv, lower_white_np, upper_white_np)
+
+    total_pixels = mask_bg.size
+    background_pixels = (mask_bg == 255).sum()
+    foreground_pixels = total_pixels - background_pixels
+    
+    if total_pixels == 0:
+        return 0.0
+        
+    return foreground_pixels / total_pixels
 
 def generate_tile_data(args):
     """Generate JSON data from image tiles using parallel processing."""

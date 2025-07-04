@@ -45,6 +45,7 @@ def create_database():
         avg_saturation REAL,
         entropy REAL,
         edge_density REAL,
+        foreground_ratio REAL, 
         FOREIGN KEY (source_file_id) REFERENCES SourceFiles (id)
     );
     ''')
