@@ -9,6 +9,10 @@
         nav { margin-bottom: 20px; }
         .controls { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; }
         canvas { border: 1px solid black; }
+        .rule-block { border: 1px solid #007bff; border-radius: 5px; padding: 10px; margin-bottom: 10px; }
+        .condition-row, .rule-header { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+        .rule-header { margin-bottom: 10px; }
+        select, input, button { padding: 5px; }
     </style>
 </head>
 <body>
@@ -18,11 +22,23 @@
     <h1>Spatial Heatmap Analysis</h1>
 
     <div class="controls">
-        <label for="filename-select">Select Source File:</label>
-        <select id="filename-select">
-            <option value="">-- Please select a file --</option>
-        </select>
-        <button id="generate-btn" style="margin-left: 20px;">Generate Heatmap</button>
+        <h3>1. Select Source File</h3>
+        <div class="filter-row">
+            <label for="filename-select">Source File:</label>
+            <select id="filename-select">
+                <option value="">-- Please select a file --</option>
+            </select>
+        </div>
+        <hr>
+
+        <h3>2. Define Heatmap Rules (in order of priority)</h3>
+        <div id="rule-builder-container">
+            </div>
+        <button id="add-rule-btn">+ Add Rule</button>
+        <hr>
+
+        <h3>3. Generate Heatmap</h3>
+        <button id="generate-btn">Generate Heatmap</button>
     </div>
 
     <div id="loading-message" style="display: none;">
