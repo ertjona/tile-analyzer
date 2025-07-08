@@ -77,6 +77,7 @@ function addConditionRow(ruleBlock) {
         <select class="condition-key">
             <option value="edge_density">Edge Density</option>
             <option value="foreground_ratio">Foreground Ratio</option>
+			<option value="max_subject_area">Max Subject Area</option>
             <option value="laplacian">Laplacian</option>
             <option value="avg_brightness">Avg. Brightness</option>
             <option value="size">Size</option>

@@ -75,7 +75,8 @@ def process_single_tile(filepath, skip_measurements=None):
             "avg_saturation": lambda: np.mean(hsv_img[:, :, 1]) / 255.0,
             "entropy": lambda: shannon_entropy(gray_img),
             "edge_density": lambda: calculate_edge_density(gray_img),
-            "foreground_ratio": lambda: calculate_foreground_ratio(hsv_img) # <-- Add this line
+            "foreground_ratio": lambda: calculate_foreground_ratio(hsv_img),
+            "max_subject_area": lambda: calculate_max_subject_area(hsv_img)
         }
         
         # Execute measurements
@@ -128,6 +129,26 @@ def calculate_foreground_ratio(hsv, lower_white=(0, 0, 200), upper_white=(180, 2
         return 0.0
         
     return foreground_pixels / total_pixels
+
+def calculate_max_subject_area(hsv, lower_white=(0, 0, 220), upper_white=(180, 20, 255), kernel_size=3):    
+    lower_white_np = np.array(lower_white, dtype=np.uint8)
+    upper_white_np = np.array(upper_white, dtype=np.uint8)
+    mask_bg = cv2.inRange(hsv, lower_white_np, upper_white_np)
+    mask_fg = cv2.bitwise_not(mask_bg)
+    
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    mask_fg_clean = cv2.morphologyEx(mask_fg, cv2.MORPH_OPEN, kernel)
+    
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_fg_clean)
+    
+    if num_labels > 1:
+        subject_areas = stats[1:, cv2.CC_STAT_AREA]
+        max_subj_area = max(subject_areas)
+    else:
+        max_subj_area = 0
+    
+    # NEW: Convert the final result to a standard Python integer before returning
+    return int(max_subj_area)
 
 def generate_tile_data(args):
     """Generate JSON data from image tiles using parallel processing."""

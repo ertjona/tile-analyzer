@@ -46,6 +46,7 @@ def create_database():
         entropy REAL,
         edge_density REAL,
         foreground_ratio REAL, 
+        max_subject_area REAL,
         FOREIGN KEY (source_file_id) REFERENCES SourceFiles (id)
     );
     ''')

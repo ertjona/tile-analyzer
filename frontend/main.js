@@ -22,7 +22,8 @@ const ALL_COLUMNS = [
     { key: 'avg_brightness', label: 'Avg Brightness' },
     { key: 'avg_saturation', label: 'Avg Saturation' },
     { key: 'edge_density', label: 'Edge Density' },
-	{ key: 'foreground_ratio', label: 'Foreground Ratio' }
+	{ key: 'foreground_ratio', label: 'Foreground Ratio' },
+	{ key: 'max_subject_area', label: 'Max Subject Area' }
 ];
 
 // --- Main Setup ---
@@ -179,6 +180,7 @@ function addFilterRow() {
             <option value="avg_saturation">Avg. Saturation</option>
 			<option value="size">Size</option>
 			<option value="foreground_ratio">Foreground Ratio</option>
+			<option value="max_subject_area">Max Subject Area</option>
         </select>
         <select class="filter-op">
             <option value=">">&gt;</option>
