@@ -160,7 +160,8 @@ async function generateHeatmap() {
         if (!response.ok) throw new Error(`HTTP Error: ${response.statusText}`);
         const data = await response.json();
         
-        renderHeatmap(data);
+        // --- MODIFIED LINE BELOW: Pass all relevant data to renderHeatmap ---
+        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config); //
 
     } catch (error) {
         console.error('Error generating heatmap:', error);
@@ -171,21 +172,75 @@ async function generateHeatmap() {
 }
 
 // --- (renderHeatmap function is the same as before) ---
-function renderHeatmap(data) {
+// --- MODIFIED FUNCTION BELOW: Updated signature and added legend rendering ---
+function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config) { //
     const canvas = document.getElementById('heatmap-canvas');
     const ctx = canvas.getContext('2d');
-    const tileSize = 1;
+    const tileSize = 2; // <-- MODIFIED: Changed from 1 to 2
 
-    if (data.grid_width === 0) return;
+    if (grid_width === 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas if no data
+        document.getElementById('legend-content').innerHTML = ''; // Clear legend too
+        return;
+    }
 
-    canvas.width = data.grid_width * tileSize;
-    canvas.height = data.grid_height * tileSize;
+    canvas.width = grid_width * tileSize;
+    canvas.height = grid_height * tileSize;
 
-    for (let row = 0; row < data.grid_height; row++) {
-        for (let col = 0; col < data.grid_width; col++) {
-            const index = row * data.grid_width + col;
-            ctx.fillStyle = data.heatmap_data[index];
+    for (let row = 0; row < grid_height; row++) {
+        for (let col = 0; col < grid_width; col++) {
+            const index = row * grid_width + col;
+            ctx.fillStyle = heatmap_data[index];
             ctx.fillRect(col * tileSize, row * tileSize, tileSize, tileSize);
         }
     }
+
+    // --- NEW LOGIC FOR LEGEND RENDERING BELOW ---
+    const legendContent = document.getElementById('legend-content');
+    legendContent.innerHTML = ''; // Clear previous legend
+
+    // Default color legend item
+    const defaultColorDiv = document.createElement('div');
+    defaultColorDiv.className = 'legend-item';
+    defaultColorDiv.innerHTML = `
+        <div class="legend-color-box" style="background-color: ${rules_config.default_color};"></div>
+        <span>Default (No Rule Matched)</span>
+    `;
+    legendContent.appendChild(defaultColorDiv);
+
+
+    rules_config.rules.forEach(rule => {
+        const ruleDiv = document.createElement('div');
+        ruleDiv.className = 'legend-item';
+        ruleDiv.innerHTML = `
+            <div class="legend-color-box" style="background-color: ${rule.color};"></div>
+            <span>${formatRuleConditions(rule.rule_group)}</span>
+        `;
+        legendContent.appendChild(ruleDiv);
+    });
+}
+
+// --- NEW HELPER FUNCTION: formatRuleConditions ---
+function formatRuleConditions(ruleGroup) {
+    const conditions = ruleGroup.conditions.map(cond => {
+        // Mapping for display names of keys (you might want to expand this)
+        const keyMap = {
+            'edge_density': 'Edge Density',
+            'foreground_ratio': 'Foreground Ratio',
+            'max_subject_area': 'Max Subject Area',
+            'laplacian': 'Laplacian',
+            'avg_brightness': 'Avg. Brightness',
+            'size': 'Size',
+            'entropy': 'Entropy',
+            'avg_saturation': 'Avg. Saturation'
+        };
+        const displayKey = keyMap[cond.key] || cond.key;
+        return `${displayKey} ${cond.op} ${cond.value.toFixed(6)}`;
+    });
+    
+    const logicalOpDisplay = ruleGroup.logical_op.toUpperCase() === 'AND' ? 'AND' : 'OR';
+    if (conditions.length > 1) {
+        return `(${conditions.join(` ${logicalOpDisplay} `)})`;
+    }
+    return conditions.join(''); // For single condition, no need for parentheses
 }

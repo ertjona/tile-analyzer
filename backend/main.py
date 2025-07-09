@@ -377,7 +377,8 @@ def generate_heatmap(request: HeatmapRequest) -> Dict[str, Any]:
     return {
         "grid_width": grid_width,
         "grid_height": grid_height,
-        "heatmap_data": heatmap_data
+        "heatmap_data": heatmap_data,
+        "rules_config": request.rules_config  # <--- ADD THIS LINE
     }
 
 # NEW HELPER FUNCTION: This can be placed right after the heatmap endpoint

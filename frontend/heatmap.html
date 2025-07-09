@@ -13,6 +13,20 @@
         .condition-row, .rule-header { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
         .rule-header { margin-bottom: 10px; }
         select, input, button { padding: 5px; }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-right: 20px; /* Space between items */
+            margin-bottom: 10px; /* Space below items */
+            white-space: nowrap; /* Prevent text wrapping within a single item */
+        }
+        .legend-color-box {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #333;
+            margin-right: 8px; /* Space between color box and text */
+            flex-shrink: 0; /* Prevent color box from shrinking */
+        }
     </style>
 </head>
 <body>
@@ -46,6 +60,12 @@
     </div>
     
     <canvas id="heatmap-canvas" width="800" height="600"></canvas>
+	
+	<div id="heatmap-legend" style="margin-top: 20px;">
+        <h3>Legend</h3>
+        <div id="legend-content" style="display: flex; flex-wrap: wrap; gap: 15px;">
+            </div>
+    </div>
 
     <script src="heatmap.js"></script>
 </body>
