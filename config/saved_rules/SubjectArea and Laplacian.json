@@ -1,0 +1,85 @@
+{
+  "default_color": "#CCCCCC",
+  "rules": [
+    {
+      "color": "#ffffff",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "max_subject_area",
+            "op": "<",
+            "value": 200
+          }
+        ]
+      }
+    },
+    {
+      "color": "#383838",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "max_subject_area",
+            "op": ">=",
+            "value": 64000
+          }
+        ]
+      }
+    },
+    {
+      "color": "#0000ff",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "max_subject_area",
+            "op": ">=",
+            "value": 200
+          },
+          {
+            "key": "laplacian",
+            "op": ">=",
+            "value": 10
+          }
+        ]
+      }
+    },
+    {
+      "color": "#00ffff",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "max_subject_area",
+            "op": ">=",
+            "value": 200
+          },
+          {
+            "key": "laplacian",
+            "op": ">=",
+            "value": 5
+          }
+        ]
+      }
+    },
+    {
+      "color": "#ffa200",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "max_subject_area",
+            "op": ">=",
+            "value": 200
+          },
+          {
+            "key": "laplacian",
+            "op": "<",
+            "value": 5
+          }
+        ]
+      }
+    }
+  ]
+}

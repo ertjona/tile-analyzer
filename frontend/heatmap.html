@@ -51,8 +51,23 @@
         <button id="add-rule-btn">+ Add Rule</button>
         <hr>
 
-        <h3>3. Generate Heatmap</h3>
-        <button id="generate-btn">Generate Heatmap</button>
+        <h3>3. Save / Load Rules</h3>
+        <div class="save-rules-section" style="margin-bottom: 15px;">
+            <label for="rule-name-input">Save Current Rules As:</label>
+            <input type="text" id="rule-name-input" placeholder="Enter rule set name">
+            <button id="save-rules-btn">Save Rules</button>
+        </div>
+        <div class="load-rules-section">
+            <label for="load-rule-select">Load Saved Rules:</label>
+            <select id="load-rule-select">
+                <option value="">-- Select a saved rule set --</option>
+            </select>
+            <button id="load-rules-btn">Load Rules</button>
+            <button id="delete-rule-btn" style="margin-left: 5px;">Delete Selected</button>
+        </div>
+        <hr>
+
+        <h3>4. Generate Heatmap</h3> <button id="generate-btn">Generate Heatmap</button>
     </div>
 
     <div id="loading-message" style="display: none;">

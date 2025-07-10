@@ -1,7 +1,7 @@
 # backend/main.py
 
 import sqlite3
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException # <--- ADD HTTPException here
 from fastapi.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +18,13 @@ import json # <-- ENSURE THIS LINE IS PRESENT
 # --- Configuration ---
 SCRIPT_DIR = Path(__file__).resolve().parent
 DB_PATH = SCRIPT_DIR.parent / "database" / "analysis.db"
+
+# NEW: Directory for saved heatmap rules
+SAVED_RULES_DIR = SCRIPT_DIR.parent / "config" / "saved_rules" #
+
+# Ensure the directory exists
+SAVED_RULES_DIR.mkdir(parents=True, exist_ok=True) #
+
 app = FastAPI()
 
 
@@ -329,6 +336,9 @@ class HeatmapRequest(BaseModel):
     json_filename: str
     rules_config: HeatmapRulesConfig
 
+class SaveRulesRequest(BaseModel):
+    rule_name: str
+    rules_config: HeatmapRulesConfig #
 
 # ... (keep your get_db_connection, search_tiles, get_image, and stats endpoints) ...
 
@@ -381,6 +391,69 @@ def generate_heatmap(request: HeatmapRequest) -> Dict[str, Any]:
         "rules_config": request.rules_config  # <--- ADD THIS LINE
     }
 
+# NEW: Endpoint to save heatmap rules
+@app.post("/api/heatmap/rules/save")
+def save_heatmap_rules(request: SaveRulesRequest):
+    rule_filename = f"{request.rule_name}.json"
+    file_path = SAVED_RULES_DIR / rule_filename
+
+    if file_path.exists():
+        raise HTTPException(status_code=409, detail=f"Rule set '{request.rule_name}' already exists. Please choose a different name.") #
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(request.rules_config.dict(), f, indent=2) # Use .dict() to convert Pydantic model to dict #
+        return {"message": f"Rule set '{request.rule_name}' saved successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save rule set: {e}")
+        
+# NEW: Endpoint to list all saved heatmap rules
+@app.get("/api/heatmap/rules/list")
+def list_heatmap_rules() -> List[str]:
+    """Lists the names of all saved heatmap rule configurations."""
+    rules = []
+    try:
+        for file_path in SAVED_RULES_DIR.iterdir():
+            if file_path.is_file() and file_path.suffix == ".json":
+                rules.append(file_path.stem) # .stem gets the filename without extension
+        rules.sort() # Optional: keep the list sorted
+        return rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list rule sets: {e}") #
+
+# NEW: Endpoint to load a specific heatmap rule by name
+@app.get("/api/heatmap/rules/load/{rule_name}")
+def load_heatmap_rule(rule_name: str) -> HeatmapRulesConfig:
+    """Loads a specific heatmap rule configuration by name."""
+    file_path = SAVED_RULES_DIR / f"{rule_name}.json"
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Rule set '{rule_name}' not found.") #
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            rules_data = json.load(f)
+        return HeatmapRulesConfig(**rules_data) # Validate and return as Pydantic model #
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail=f"Invalid JSON format for rule set '{rule_name}'.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load rule set: {e}")
+
+# NEW: Endpoint to delete a specific heatmap rule by name
+@app.delete("/api/heatmap/rules/delete/{rule_name}")
+def delete_heatmap_rule(rule_name: str):
+    """Deletes a specific heatmap rule configuration by name."""
+    file_path = SAVED_RULES_DIR / f"{rule_name}.json" #
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Rule set '{rule_name}' not found.") #
+
+    try:
+        os.remove(file_path) #
+        return {"message": f"Rule set '{rule_name}' deleted successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete rule set: {e}")
+        
 # NEW HELPER FUNCTION: This can be placed right after the heatmap endpoint
 def evaluate_rule_group(tile: Dict, group: RuleGroup, ops: Dict) -> bool:
     """Evaluates a group of conditions against a tile's data."""

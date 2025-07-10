@@ -1,0 +1,18 @@
+{
+  "default_color": "#CCCCCC",
+  "rules": [
+    {
+      "color": "#ffff00",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "edge_density",
+            "op": ">",
+            "value": 0
+          }
+        ]
+      }
+    }
+  ]
+}
