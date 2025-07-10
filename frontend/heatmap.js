@@ -395,7 +395,7 @@ async function generateHeatmap() {
         if (!response.ok) throw new Error(`HTTP Error: ${response.statusText}`);
         const data = await response.json();
         
-        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config);
+        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts); // MODIFIED: Added data.rule_match_counts
 
     } catch (error) {
         console.error('Error generating heatmap:', error);
@@ -410,7 +410,7 @@ async function generateHeatmap() {
 // ... (existing code including generateHeatmap function) ...
 
 // --- renderHeatmap function (MODIFIED TO DRAW LEGEND ON CANVAS) ---
-function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config) {
+function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule_match_counts) { // <--- THIS LINE
     const canvas = document.getElementById('heatmap-canvas');
     const ctx = canvas.getContext('2d');
 	const downloadBtn = document.getElementById('download-btn'); // Get the download button
@@ -418,6 +418,7 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config) {
     if (grid_width === 0) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas if no data
         document.getElementById('legend-content').innerHTML = ''; // Clear the HTML legend too
+		document.getElementById('stats-list').innerHTML = ''; // NEW: Clear stats list
         downloadBtn.disabled = true; // NEW: Disable if no heatmap
         return;
     }
@@ -508,9 +509,51 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config) {
 
     // Optionally, clear the HTML-based legend now that it's on canvas
     document.getElementById('legend-content').innerHTML = '';
-	
-	downloadBtn.disabled = false; // NEW: Enable download button after successful render
 
+
+    // --- NEW LOGIC FOR DISPLAYING RULE MATCH STATISTICS ---
+    const statsList = document.getElementById('stats-list');
+    statsList.innerHTML = ''; // Clear previous statistics
+
+    let totalMatchedTiles = 0;
+    for (const key in rule_match_counts) {
+        totalMatchedTiles += rule_match_counts[key];
+    }
+
+    if (totalMatchedTiles === 0 && rules_config.rules.length > 0) {
+        // Handle case where no tiles matched after rules were applied, but there are rules
+        const listItem = document.createElement('li');
+        listItem.innerHTML = `<strong>No tiles matched any rules or were processed successfully.</strong>`;
+        statsList.appendChild(listItem);
+    } else if (totalMatchedTiles === 0) {
+        const listItem = document.createElement('li');
+        listItem.innerHTML = `<strong>No tiles found for this JSON file.</strong>`;
+        statsList.appendChild(listItem);
+    } else {
+        // Display stats for default (unmatched) tiles
+        const defaultCount = rule_match_counts['default'] || 0;
+        const defaultPercentage = (defaultCount / totalMatchedTiles) * 100;
+        let listItem = document.createElement('li');
+        listItem.innerHTML = `
+            <strong>Default (No Rule Matched):</strong> <span>${defaultCount} tiles</span> (<span>${defaultPercentage.toFixed(2)}%</span>)
+        `;
+        statsList.appendChild(listItem);
+
+        // Display stats for each defined rule
+        rules_config.rules.forEach((rule, index) => {
+            const ruleCount = rule_match_counts[String(index)] || 0;
+            const rulePercentage = (ruleCount / totalMatchedTiles) * 100;
+            listItem = document.createElement('li');
+            listItem.innerHTML = `
+                <strong>${formatRuleConditions(rule.rule_group)}:</strong> <span>${ruleCount} tiles</span> (<span>${rulePercentage.toFixed(2)}%</span>)
+            `;
+            statsList.appendChild(listItem);
+        });
+    }
+
+    // --- END NEW LOGIC FOR DISPLAYING RULE MATCH STATISTICS ---
+
+    downloadBtn.disabled = false; // Enable download button after successful render
 }
 
 // ... (rest of your heatmap.js file, including formatRuleConditions helper) ...
@@ -602,7 +645,7 @@ async function generateAllHeatmaps() {
                 }
 
                 const data = await heatmapResponse.json();
-                renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config);
+                renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts); // MODIFIED: Added data.rule_match_counts 
 				
 				// NEW: Trigger download after rendering each heatmap
                 downloadCurrentHeatmap(filename); // Call the modified download function

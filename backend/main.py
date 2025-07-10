@@ -359,7 +359,15 @@ def generate_heatmap(request: HeatmapRequest) -> Dict[str, Any]:
         conn.close()
 
     if not tiles:
-        return {"grid_width": 0, "grid_height": 0, "heatmap_data": []}
+        # MODIFIED: Return empty counts if no tiles
+        return {
+            "grid_width": 0,
+            "grid_height": 0,
+            "heatmap_data": [],
+            "rules_config": request.rules_config,
+            "rule_match_counts": {} # NEW
+        }
+
 
     # Determine grid size
     max_col = max(t['col'] for t in tiles)
@@ -374,22 +382,33 @@ def generate_heatmap(request: HeatmapRequest) -> Dict[str, Any]:
     ops = {'>': (lambda a, b: a > b), '<': (lambda a, b: a < b), '>=': (lambda a, b: a >= b),
            '<=': (lambda a, b: a <= b), '==': (lambda a, b: a == b), '!=': (lambda a, b: a != b)}
 
+    # NEW: Initialize rule match counters
+    rule_match_counts = {str(i): 0 for i in range(len(request.rules_config.rules))} # For indexed rules
+    rule_match_counts['default'] = 0 # For default unmatched tiles
+
     # Process each tile against the rules
     for tile in tiles:
-        for rule in request.rules_config.rules:
+        matched_by_rule = False
+        for i, rule in enumerate(request.rules_config.rules): # Enumerate to get index
             is_match = evaluate_rule_group(tile, rule.rule_group, ops)
             if is_match:
-                # Set color and break to next tile (rule priority)
                 index = tile['row'] * grid_width + tile['col']
                 heatmap_data[index] = rule.color
-                break
+                rule_match_counts[str(i)] += 1 # Increment counter for this rule
+                matched_by_rule = True
+                break # Break to next tile (rule priority)
+        
+        if not matched_by_rule:
+            rule_match_counts['default'] += 1 # Increment default counter if no rule matched
     
     return {
         "grid_width": grid_width,
         "grid_height": grid_height,
         "heatmap_data": heatmap_data,
-        "rules_config": request.rules_config  # <--- ADD THIS LINE
+        "rules_config": request.rules_config,
+        "rule_match_counts": rule_match_counts # NEW: Include counts in response
     }
+
 
 # NEW: Endpoint to save heatmap rules
 @app.post("/api/heatmap/rules/save")
