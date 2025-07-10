@@ -12,7 +12,13 @@ function setupEventListeners() {
     document.getElementById('generate-btn').addEventListener('click', generateHeatmap);
     document.getElementById('add-rule-btn').addEventListener('click', addRuleBlock);
 
-    // NEW: Event listeners for Save/Load/Delete Rules
+    // NEW: Event listener for 'Download Current Heatmap' button
+    document.getElementById('download-btn').addEventListener('click', downloadCurrentHeatmap); // NEW LINE
+
+    // NEW: Event listener for 'Generate All Heatmaps' button
+    document.getElementById('generate-all-btn').addEventListener('click', generateAllHeatmaps); // NEW LINE
+
+	// NEW: Event listeners for Save/Load/Delete Rules
     document.getElementById('save-rules-btn').addEventListener('click', saveCurrentRules); // NEW
     document.getElementById('load-rules-btn').addEventListener('click', loadSelectedRule); // NEW
     document.getElementById('delete-rule-btn').addEventListener('click', deleteSelectedRule); // NEW
@@ -31,6 +37,22 @@ function setupEventListeners() {
         }
     });
 }
+
+// frontend/heatmap.js
+
+// ... (existing window.onload and setupEventListeners) ...
+
+// --- Heatmap/Legend Drawing Constants ---
+const TILE_SIZE = 2; // Each tile will be 2x2 pixels on the canvas
+const LEGEND_ITEM_HEIGHT = 25; // Height for each legend entry (color box + text)
+const LEGEND_PADDING_TOP = 15; // Padding between heatmap and legend
+const LEGEND_ITEM_PADDING_LEFT = 10; // Left padding for each legend item
+const LEGEND_COLOR_BOX_SIZE = 20; // Size of the color swatch in the legend
+const LEGEND_TEXT_MARGIN = 8; // Space between color box and text in legend
+const LEGEND_FONT = '14px Arial'; // Font for legend text
+const MAX_LEGEND_WIDTH = 300; // Max width for a legend column, for multi-column layout (can adjust)
+
+// ... (rest of your existing code) ...
 
 async function fetchSourceFiles() {
     // ... (This function is the same as before)
@@ -383,53 +405,115 @@ async function generateHeatmap() {
     }
 }
 
-// --- renderHeatmap function ---
+// frontend/heatmap.js
+
+// ... (existing code including generateHeatmap function) ...
+
+// --- renderHeatmap function (MODIFIED TO DRAW LEGEND ON CANVAS) ---
 function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config) {
     const canvas = document.getElementById('heatmap-canvas');
     const ctx = canvas.getContext('2d');
-    const tileSize = 2; // MODIFIED: Changed from 1 to 2
+	const downloadBtn = document.getElementById('download-btn'); // Get the download button
 
     if (grid_width === 0) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas if no data
-        document.getElementById('legend-content').innerHTML = ''; // Clear legend too
+        document.getElementById('legend-content').innerHTML = ''; // Clear the HTML legend too
+        downloadBtn.disabled = true; // NEW: Disable if no heatmap
         return;
     }
 
-    canvas.width = grid_width * tileSize;
-    canvas.height = grid_height * tileSize;
+    // Calculate heatmap dimensions
+    const heatmapCanvasWidth = grid_width * TILE_SIZE;
+    const heatmapCanvasHeight = grid_height * TILE_SIZE;
 
+    // Determine legend dimensions
+    const numLegendItems = rules_config.rules.length + 1; // +1 for default color
+    let legendCanvasHeight = 0;
+    let legendMaxItemWidth = 0;
+
+    // Temporarily draw text to measure its width for legend layout
+    ctx.font = LEGEND_FONT;
+    const legendTexts = [
+        `Default (No Rule Matched)`,
+        ...rules_config.rules.map(rule => formatRuleConditions(rule.rule_group))
+    ];
+    
+    legendTexts.forEach(text => {
+        const textWidth = ctx.measureText(text).width;
+        // Item width includes color box, its margin, and text width
+        const currentItemWidth = LEGEND_COLOR_BOX_SIZE + LEGEND_TEXT_MARGIN + textWidth;
+        if (currentItemWidth > legendMaxItemWidth) {
+            legendMaxItemWidth = currentItemWidth;
+        }
+    });
+
+    // Calculate number of columns needed based on a max desired legend width
+    let numLegendColumns = Math.floor(heatmapCanvasWidth / (legendMaxItemWidth + LEGEND_ITEM_PADDING_LEFT * 2));
+    if (numLegendColumns === 0) numLegendColumns = 1; // At least one column
+    
+    // Total legend height based on number of rows
+    const numLegendRows = Math.ceil(numLegendItems / numLegendColumns);
+    legendCanvasHeight = (numLegendRows * LEGEND_ITEM_HEIGHT) + LEGEND_PADDING_TOP;
+
+    // Set final canvas dimensions
+    canvas.width = heatmapCanvasWidth;
+    canvas.height = heatmapCanvasHeight + legendCanvasHeight;
+
+    // --- Draw the Heatmap ---
     for (let row = 0; row < grid_height; row++) {
         for (let col = 0; col < grid_width; col++) {
             const index = row * grid_width + col;
             ctx.fillStyle = heatmap_data[index];
-            ctx.fillRect(col * tileSize, row * tileSize, tileSize, tileSize);
+            ctx.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
         }
     }
 
-    // --- NEW LOGIC FOR LEGEND RENDERING ---
-    const legendContent = document.getElementById('legend-content');
-    legendContent.innerHTML = ''; // Clear previous legend
+    // --- Draw the Legend on Canvas ---
+    // NEW: Draw a solid background for the legend area
+    ctx.fillStyle = '#FFFFFF'; // White background for the legend
+    ctx.fillRect(0, heatmapCanvasHeight, canvas.width, legendCanvasHeight); // Fill the legend area
+	
+	ctx.font = LEGEND_FONT;
+    ctx.textBaseline = 'middle'; // Align text vertically
+    ctx.fillStyle = '#000000'; // Set text color to black (or contrasting color)
 
-    // Default color legend item
-    const defaultColorDiv = document.createElement('div');
-    defaultColorDiv.className = 'legend-item';
-    defaultColorDiv.innerHTML = `
-        <div class="legend-color-box" style="background-color: ${rules_config.default_color};"></div>
-        <span>Default (No Rule Matched)</span>
-    `;
-    legendContent.appendChild(defaultColorDiv);
+    let currentX = LEGEND_ITEM_PADDING_LEFT;
+    let currentY = heatmapCanvasHeight + LEGEND_PADDING_TOP + (LEGEND_ITEM_HEIGHT / 2); // Start halfway down the first item
 
+    // Draw default color item
+    ctx.fillStyle = rules_config.default_color;
+    ctx.fillRect(currentX, currentY - (LEGEND_COLOR_BOX_SIZE / 2), LEGEND_COLOR_BOX_SIZE, LEGEND_COLOR_BOX_SIZE);
+    ctx.fillStyle = '#000000'; // Reset fill style for text
+    ctx.fillText(`Default (No Rule Matched)`, currentX + LEGEND_COLOR_BOX_SIZE + LEGEND_TEXT_MARGIN, currentY);
 
+    let itemCounter = 1; // Start from 1 as default is done
+
+    // Draw rule items
     rules_config.rules.forEach(rule => {
-        const ruleDiv = document.createElement('div');
-        ruleDiv.className = 'legend-item';
-        ruleDiv.innerHTML = `
-            <div class="legend-color-box" style="background-color: ${rule.color};"></div>
-            <span>${formatRuleConditions(rule.rule_group)}</span>
-        `;
-        legendContent.appendChild(ruleDiv);
+        if (itemCounter % numLegendColumns === 0) {
+            // Move to next row
+            currentX = LEGEND_ITEM_PADDING_LEFT;
+            currentY += LEGEND_ITEM_HEIGHT;
+        } else {
+            // Move to next column
+            currentX += legendMaxItemWidth + LEGEND_ITEM_PADDING_LEFT * 2;
+        }
+
+        ctx.fillStyle = rule.color;
+        ctx.fillRect(currentX, currentY - (LEGEND_COLOR_BOX_SIZE / 2), LEGEND_COLOR_BOX_SIZE, LEGEND_COLOR_BOX_SIZE);
+        ctx.fillStyle = '#000000'; // Reset fill style for text
+        ctx.fillText(formatRuleConditions(rule.rule_group), currentX + LEGEND_COLOR_BOX_SIZE + LEGEND_TEXT_MARGIN, currentY);
+        itemCounter++;
     });
+
+    // Optionally, clear the HTML-based legend now that it's on canvas
+    document.getElementById('legend-content').innerHTML = '';
+	
+	downloadBtn.disabled = false; // NEW: Enable download button after successful render
+
 }
+
+// ... (rest of your heatmap.js file, including formatRuleConditions helper) ...
 
 // --- formatRuleConditions helper function ---
 function formatRuleConditions(ruleGroup) {
@@ -455,3 +539,127 @@ function formatRuleConditions(ruleGroup) {
     }
     return conditions.join('');
 }
+
+// frontend/heatmap.js
+
+// ... (existing code including renderHeatmap and formatRuleConditions) ...
+
+// --- NEW FUNCTION: Generate All Heatmaps ---
+async function generateAllHeatmaps() {
+    const generateBtn = document.getElementById('generate-btn');
+    const generateAllBtn = document.getElementById('generate-all-btn');
+    const filenameSelect = document.getElementById('filename-select');
+    const loadingMessage = document.getElementById('loading-message');
+    const originalLoadingMessage = loadingMessage.textContent;
+
+    generateBtn.disabled = true;
+    generateAllBtn.disabled = true;
+    loadingMessage.style.display = 'block';
+
+    try {
+        // Fetch all source filenames
+        const response = await fetch('/api/source_files');
+        if (!response.ok) throw new Error('Failed to fetch source files for batch generation.');
+        const allFilenames = await response.json(); //
+
+        if (allFilenames.length === 0) {
+            alert('No source files found to generate heatmaps for.');
+            return;
+        }
+
+        const rulesConfig = getCurrentRulesConfigFromUI();
+        if (rulesConfig.rules.length === 0) {
+            alert('Please define at least one valid rule with a condition before generating all heatmaps.');
+            return;
+        }
+
+        for (let i = 0; i < allFilenames.length; i++) {
+            const filename = allFilenames[i];
+            loadingMessage.textContent = `Generating heatmap for ${filename} (${i + 1}/${allFilenames.length})...`;
+            
+            // Set the dropdown to the current filename for visual feedback
+            filenameSelect.value = filename;
+
+            // Prepare the request body for generateHeatmap
+            const requestBody = {
+                json_filename: filename,
+                rules_config: rulesConfig
+            };
+
+            try {
+                const heatmapResponse = await fetch('/api/heatmap', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!heatmapResponse.ok) {
+                    const errorText = await heatmapResponse.text();
+                    console.error(`Error generating heatmap for ${filename}: Status ${heatmapResponse.status}, Response: ${errorText}`);
+                    // Optionally, alert the user about specific file failures
+                    // alert(`Failed to generate heatmap for ${filename}. Check console for details.`);
+                    continue; // Continue to the next file even if one fails
+                }
+
+                const data = await heatmapResponse.json();
+                renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config);
+				
+				// NEW: Trigger download after rendering each heatmap
+                downloadCurrentHeatmap(filename); // Call the modified download function
+				
+                // Pause briefly to allow the user to see each heatmap (optional)
+                await new Promise(resolve => setTimeout(resolve, 500)); 
+
+            } catch (innerError) {
+                console.error(`Network or unexpected error for ${filename}:`, innerError);
+                // alert(`Unexpected error generating heatmap for ${filename}. Check console.`);
+                continue;
+            }
+        }
+        alert('Batch heatmap generation complete!');
+
+    } catch (error) {
+        console.error("Error during batch heatmap generation:", error);
+        alert('An error occurred during batch heatmap generation. Check console for details.');
+    } finally {
+        generateBtn.disabled = false;
+        generateAllBtn.disabled = false;
+        loadingMessage.textContent = originalLoadingMessage;
+        loadingMessage.style.display = 'none';
+    }
+}
+
+// frontend/heatmap.js
+
+// ... (existing code including generateAllHeatmaps function) ...
+
+// --- NEW FUNCTION: Download Current Heatmap ---
+function downloadCurrentHeatmap(filenameToUse) { // MODIFIED: Accepts filename as argument
+    const canvas = document.getElementById('heatmap-canvas');
+    // const selectedFilename = document.getElementById('filename-select').value; // REMOVE OR COMMENT OUT THIS LINE
+    const selectedFilename = filenameToUse; // MODIFIED: Use the passed argument
+	
+    if (!selectedFilename || canvas.width === 0 || canvas.height === 0) {
+        alert('No heatmap to download. Please generate one first.');
+        return;
+    }
+
+    // Get image data as a PNG Data URL
+    const imageDataURL = canvas.toDataURL('image/png');
+
+    // Create a temporary link element
+    const downloadLink = document.createElement('a');
+    downloadLink.href = imageDataURL;
+
+    // Construct filename: remove .json, add _heatmap.png
+    const baseFilename = selectedFilename.replace(/\.json$/i, '');
+    downloadLink.download = `${baseFilename}_heatmap.png`;
+
+    // Programmatically click the link to trigger download
+    document.body.appendChild(downloadLink); // Append to body is good practice for programmatic clicks
+    downloadLink.click();
+    document.body.removeChild(downloadLink); // Clean up
+}
+
+
+// ... (rest of heatmap.js including renderHeatmap) ...
