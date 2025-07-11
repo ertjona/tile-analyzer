@@ -1,10 +1,12 @@
 import sqlite3
 import os
+from pathlib import Path # NEW: Import Path
 
 # Define the path for the database relative to the script's location
-DB_FOLDER = '../database'
+SCRIPT_DIR = Path(__file__).resolve().parent # NEW: Get the directory of the current script
+DB_FOLDER = SCRIPT_DIR.parent / "database" # NEW: Go up one level, then into 'database'
 DB_NAME = 'analysis.db'
-DB_PATH = os.path.join(DB_FOLDER, DB_NAME)
+DB_PATH = DB_FOLDER / DB_NAME # NEW: Use Path objects for joining
 
 def create_database():
     """Creates the SQLite database and the necessary tables."""

@@ -148,7 +148,7 @@ function setupEventListeners() {
 // --- All Helper Functions ---
 
 function populateDisplayOptions() {
-    const defaultVisible = ['json_filename', 'webp_filename', 'edge_density', 'avg_brightness', 'size'];
+    const defaultVisible = ['json_filename', 'webp_filename', 'edge_density', 'avg_brightness', 'size', 'laplacian', 'max_subject_area']; // MODIFIED
     const container = document.getElementById('display-options-dropdown');
     let content = '';
     ALL_COLUMNS.forEach(col => {
