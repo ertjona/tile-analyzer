@@ -25,7 +25,25 @@ SAVED_RULES_DIR = SCRIPT_DIR.parent / "config" / "saved_rules" #
 # Ensure the directory exists
 SAVED_RULES_DIR.mkdir(parents=True, exist_ok=True) #
 
+# backend/main.py
+
+# ... (existing imports, ensure HTTPException is imported) ...
+
+# NEW: In-memory caches for dashboard statistics
+_distribution_cache = {} # <--- ENSURE THIS IS DEFINED GLOBALLY
+_aggregate_rules_cache = {}
+_per_image_rule_report_cache = {}
+
+# NEW: Function to clear relevant caches (ensure this function is present)
+def clear_dashboard_caches():
+    _distribution_cache.clear()
+    _aggregate_rules_cache.clear()
+    _per_image_rule_report_cache.clear()
+    print("Dashboard caches cleared.")
+
 app = FastAPI()
+
+# ... (rest of your app definition and other endpoints) ...
 
 
 ## NEW: Pydantic models to define the structure of our POST request body
@@ -202,6 +220,7 @@ async def start_ingestion(request: Request, ingestion_request: IngestionRequest)
                 
                 conn.commit()
                 yield f"data: SUCCESS: Ingested '{filename}' with {tile_count} tiles.\n\n"
+                clear_dashboard_caches() # NEW: Clear cache after successful ingestion
                 await asyncio.sleep(0.1)
 
             except Exception as e:
@@ -211,6 +230,8 @@ async def start_ingestion(request: Request, ingestion_request: IngestionRequest)
 
         conn.close()
         yield f"data: Ingestion process complete.\n\n"
+        clear_dashboard_caches() # NEW: Clear cache after successful ingestion
+
 
     return EventSourceResponse(log_generator())
     
@@ -272,16 +293,27 @@ def get_summary_stats():
         "total_image_tiles": total_tiles
     }
 
-# --- NEW: Endpoint for detailed distribution stats of a column ---
-@app.get("/api/stats/distribution/{column_name}")
+# backend/main.py
+
+# ... (your existing get_summary_stats endpoint) ...
+
+# --- MODIFIED: Endpoint for detailed distribution stats of a column (with caching) ---
+@app.get("/api/stats/distribution/{column_name}") # <--- ENSURE THIS DECORATOR IS CORRECT
 def get_distribution_stats(column_name: str):
     """
     Calculates and returns descriptive statistics for a given numeric column.
+    Results are cached.
     """
     # Validate column name to prevent SQL injection
-    allowed_columns = ["laplacian", "avg_brightness", "avg_saturation", "entropy", "edge_density"]
+    # MODIFIED: Expanded allowed_columns based on scripts/measure_med_tiles.py
+    allowed_columns = ["laplacian", "avg_brightness", "avg_saturation", "entropy", "edge_density", "size", "foreground_ratio", "max_subject_area"]
     if column_name not in allowed_columns:
         raise HTTPException(status_code=400, detail="Invalid column name for statistics.")
+
+    # NEW: Check cache first
+    if column_name in _distribution_cache:
+        print(f"Serving {column_name} distribution from cache.")
+        return _distribution_cache[column_name]
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -292,12 +324,14 @@ def get_distribution_stats(column_name: str):
     conn.close()
     
     if not values:
-        return {"column": column_name, "count": 0}
+        result = {"column": column_name, "count": 0}
+        _distribution_cache[column_name] = result # Cache empty result
+        return result
 
     # Use NumPy to calculate statistics
     np_values = np.array(values)
     
-    return {
+    result = {
         "column": column_name,
         "count": len(np_values),
         "mean": np.mean(np_values),
@@ -308,11 +342,220 @@ def get_distribution_stats(column_name: str):
         "percentile_75": np.percentile(np_values, 75),
         "max": np.max(np_values),
     }
+    
+    _distribution_cache[column_name] = result # NEW: Store in cache
+    print(f"Calculated and cached {column_name} distribution.")
+    return result
 
-# In backend/main.py
+# backend/main.py
 
-# ... (keep all your existing imports and Pydantic models) ...
-# ... (No new Python libraries are needed for this step) ...
+# ... (your existing get_aggregate_heatmap_rules endpoint) ...
+
+# --- MODIFIED: Endpoint to get aggregate rule match statistics (with caching) ---
+@app.get("/api/stats/aggregate_heatmap_rules/{rule_name}")
+def get_aggregate_heatmap_rules(rule_name: str) -> Dict[str, Any]:
+    """
+    Calculates aggregate rule match statistics for a given rule set
+    across all image tiles in the database. Results are cached.
+    """
+    # NEW: Check cache first
+    if rule_name in _aggregate_rules_cache:
+        print(f"Serving aggregate rules for '{rule_name}' from cache.")
+        return _aggregate_rules_cache[rule_name]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        rules_config_model = load_heatmap_rule(rule_name)
+        rules_config = rules_config_model.dict() 
+
+        # Get ALL tiles from the database
+        query = "SELECT T.* FROM ImageTiles T"
+        all_tiles = [dict(row) for row in cursor.execute(query).fetchall()]
+
+        if not all_tiles:
+            result = {"rule_match_counts": {}, "total_tiles_evaluated": 0, "rules_config": rules_config}
+            _aggregate_rules_cache[rule_name] = result # Cache empty result
+            print(f"Calculated and cached (empty) aggregate rules for '{rule_name}'.")
+            return result
+
+        # Dictionary of operators for easy lookup (copied from generate_heatmap)
+        ops = {'>': (lambda a, b: a > b), '<': (lambda a, b: a < b), '>=': (lambda a, b: a >= b),
+               '<=': (lambda a, b: a <= b), '==': (lambda a, b: a == b), '!=': (lambda a, b: a != b)}
+
+        # Initialize aggregate rule match counters
+        aggregate_rule_match_counts = {str(i): 0 for i in range(len(rules_config['rules']))}
+        aggregate_rule_match_counts['default'] = 0
+
+        # Process each tile against the loaded rules
+        for tile in all_tiles:
+            matched_by_rule = False
+            for i, rule in enumerate(rules_config['rules']):
+                # Ensure rule['rule_group'] is passed correctly as RuleGroup model
+                is_match = evaluate_rule_group(tile, RuleGroup(**rule['rule_group']), ops)
+                if is_match:
+                    aggregate_rule_match_counts[str(i)] += 1
+                    matched_by_rule = True
+                    break
+            
+            if not matched_by_rule:
+                aggregate_rule_match_counts['default'] += 1
+
+        result = {
+            "rule_match_counts": aggregate_rule_match_counts,
+            "total_tiles_evaluated": len(all_tiles),
+            "rules_config": rules_config
+        }
+
+        _aggregate_rules_cache[rule_name] = result # Store in cache
+        print(f"Calculated and cached aggregate rules for '{rule_name}'.")
+        return result
+
+    except HTTPException:
+        raise # Re-raise if load_heatmap_rule already raised it
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get aggregate heatmap rules: {e}")
+    finally:
+        conn.close()
+
+# ... (rest of your backend/main.py code below this section) ...
+
+# ... (your existing get_aggregate_heatmap_rules endpoint) ...
+
+# NEW: In-memory cache for per-image rule reports
+_per_image_rule_report_cache = {}
+
+# NEW: Endpoint to get per-image rule match statistics
+@app.get("/api/stats/per_image_rule_report/{rule_name}")
+def get_per_image_rule_report(rule_name: str) -> Dict[str, Any]:
+    """
+    Generates a report showing rule match statistics (counts and percentages)
+    for each individual JSON file based on a specified rule set.
+    """
+    # Check cache first
+    if rule_name in _per_image_rule_report_cache:
+        print(f"Serving per-image rule report for '{rule_name}' from cache.")
+        return _per_image_rule_report_cache[rule_name]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    report_data = []
+    
+    try:
+        # Load the rules_config using the existing load_heatmap_rule logic
+        rules_config_model = load_heatmap_rule(rule_name)
+        rules_config = rules_config_model.dict() # Convert Pydantic model back to dict for processing
+
+        # Get ALL SourceFiles
+        cursor.execute("SELECT id, json_filename FROM SourceFiles")
+        source_files = [dict(row) for row in cursor.fetchall()]
+
+        if not source_files:
+            result = {"report_data": [], "rules_config": rules_config}
+            _per_image_rule_report_cache[rule_name] = result
+            return result
+
+        # Dictionary of operators for easy lookup (copied from generate_heatmap)
+        ops = {'>': (lambda a, b: a > b), '<': (lambda a, b: a < b), '>=': (lambda a, b: a >= b),
+               '<=': (lambda a, b: a <= b), '==': (lambda a, b: a == b), '!=': (lambda a, b: a != b)}
+
+        # Iterate through each source file to process its tiles
+        for source_file in source_files:
+            file_id = source_file['id']
+            json_filename = source_file['json_filename']
+
+            # Get tiles for the CURRENT SourceFile only
+            cursor.execute("SELECT T.* FROM ImageTiles T WHERE T.source_file_id = ?", (file_id,))
+            tiles_for_file = [dict(row) for row in cursor.fetchall()]
+
+            if not tiles_for_file:
+                # Add an entry for files with no tiles, but specify 0 counts
+                report_data.append({
+                    "json_filename": json_filename,
+                    "total_tiles_evaluated_for_file": 0,
+                    "rule_match_details": [] # Empty details as no tiles
+                })
+                continue
+
+            # Initialize rule match counters for THIS file
+            file_rule_match_counts = {str(i): 0 for i in range(len(rules_config['rules']))}
+            file_rule_match_counts['default'] = 0
+
+            # Process tiles for THIS file against the rules
+            for tile in tiles_for_file:
+                matched_by_rule = False
+                for i, rule in enumerate(rules_config['rules']):
+                    is_match = evaluate_rule_group(tile, RuleGroup(**rule['rule_group']), ops)
+                    if is_match:
+                        file_rule_match_counts[str(i)] += 1
+                        matched_by_rule = True
+                        break
+                
+                if not matched_by_rule:
+                    file_rule_match_counts['default'] += 1
+
+            # Calculate percentages for THIS file
+            total_tiles_for_file = len(tiles_for_file)
+            rule_match_details = []
+            
+            # Default category details
+            default_count = file_rule_match_counts['default']
+            default_percentage = (default_count / total_tiles_for_file) * 100
+            rule_match_details.append({
+                "rule_index": "default",
+                "count": default_count,
+                "percentage": default_percentage
+            })
+
+            # Rule-specific details
+            for i, rule_def in enumerate(rules_config['rules']):
+                rule_count = file_rule_match_counts[str(i)]
+                rule_percentage = (rule_count / total_tiles_for_file) * 100
+                rule_match_details.append({
+                    "rule_index": str(i),
+                    "count": rule_count,
+                    "percentage": rule_percentage
+                })
+
+            report_data.append({
+                "json_filename": json_filename,
+                "total_tiles_evaluated_for_file": total_tiles_for_file,
+                "rule_match_details": rule_match_details
+            })
+        
+        result = {
+            "report_data": report_data,
+            "rules_config": rules_config # Include the rules config for frontend display
+        }
+
+        _per_image_rule_report_cache[rule_name] = result # Store in cache
+        print(f"Calculated and cached per-image rule report for '{rule_name}'.")
+        return result
+
+    except HTTPException:
+        raise # Re-raise if load_heatmap_rule already raised it
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate per-image rule report: {e}")
+    finally:
+        conn.close()
+
+# backend/main.py
+
+# ... (existing cache variables, e.g., _distribution_cache, _aggregate_rules_cache) ...
+
+# NEW: In-memory cache for per-image rule reports
+_per_image_rule_report_cache = {} # Ensure this line is present if it wasn't before
+
+# NEW: Function to clear relevant caches
+def clear_dashboard_caches():
+    _distribution_cache.clear()
+    _aggregate_rules_cache.clear()
+    _per_image_rule_report_cache.clear() # NEW: Clear this cache too
+    print("Dashboard caches cleared.")
+
+# ... (rest of your backend/main.py code) ...
 
 # NEW: Define Pydantic models for the heatmap request
 class HeatmapCondition(BaseModel):
@@ -422,6 +665,7 @@ def save_heatmap_rules(request: SaveRulesRequest):
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(request.rules_config.dict(), f, indent=2) # Use .dict() to convert Pydantic model to dict #
+        clear_dashboard_caches() # NEW: Clear cache after saving/modifying a rule
         return {"message": f"Rule set '{request.rule_name}' saved successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save rule set: {e}")
@@ -468,7 +712,8 @@ def delete_heatmap_rule(rule_name: str):
         raise HTTPException(status_code=404, detail=f"Rule set '{rule_name}' not found.") #
 
     try:
-        os.remove(file_path) #
+        os.remove(file_path)
+        clear_dashboard_caches() # NEW: Clear cache after deleting a rule
         return {"message": f"Rule set '{rule_name}' deleted successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete rule set: {e}")
