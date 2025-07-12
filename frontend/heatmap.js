@@ -43,13 +43,14 @@ function setupEventListeners() {
 // ... (existing window.onload and setupEventListeners) ...
 
 // --- Heatmap/Legend Drawing Constants ---
-const TILE_SIZE = 2; // Each tile will be 2x2 pixels on the canvas
+const DEFAULT_TILE_SIZE = 2; // MODIFIED: Renamed for clarity, this is the base tile size
+const MIN_HEATMAP_DIMENSION = 512; // NEW: Minimum desired pixel dimension for heatmap area
 const LEGEND_ITEM_HEIGHT = 25; // Height for each legend entry (color box + text)
 const LEGEND_PADDING_TOP = 15; // Padding between heatmap and legend
 const LEGEND_ITEM_PADDING_LEFT = 10; // Left padding for each legend item
 const LEGEND_COLOR_BOX_SIZE = 20; // Size of the color swatch in the legend
 const LEGEND_TEXT_MARGIN = 8; // Space between color box and text in legend
-const LEGEND_FONT = '14px Arial'; // Font for legend text
+const LEGEND_FONT = '12px Arial'; // Font for legend text
 const MAX_LEGEND_WIDTH = 300; // Max width for a legend column, for multi-column layout (can adjust)
 
 // ... (rest of your existing code) ...
@@ -395,7 +396,18 @@ async function generateHeatmap() {
         if (!response.ok) throw new Error(`HTTP Error: ${response.statusText}`);
         const data = await response.json();
         
-        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts); // MODIFIED: Added data.rule_match_counts
+        // NEW: Calculate effective TILE_SIZE based on grid dimensions
+        let effectiveTileSize = DEFAULT_TILE_SIZE;
+        if (data.grid_width > 0 && data.grid_height > 0) {
+            const minGridDim = Math.min(data.grid_width, data.grid_height);
+            // If current dimensions with DEFAULT_TILE_SIZE are too small, scale up
+            if (minGridDim * DEFAULT_TILE_SIZE < MIN_HEATMAP_DIMENSION) {
+                effectiveTileSize = Math.max(DEFAULT_TILE_SIZE, Math.floor(MIN_HEATMAP_DIMENSION / minGridDim));
+            }
+        }
+
+        // --- MODIFIED LINE BELOW: Pass effectiveTileSize to renderHeatmap ---
+        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts, effectiveTileSize); // MODIFIED: Added effectiveTileSize
 
     } catch (error) {
         console.error('Error generating heatmap:', error);
@@ -407,32 +419,34 @@ async function generateHeatmap() {
 
 // frontend/heatmap.js
 
-// ... (existing code including generateHeatmap function) ...
+// ... (existing code, including downloadCurrentHeatmap function) ...
 
-// --- renderHeatmap function (MODIFIED TO DRAW LEGEND ON CANVAS) ---
-function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule_match_counts) { // <--- THIS LINE
+// --- renderHeatmap function (MODIFIED TO USE DYNAMIC TILE_SIZE) ---
+function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule_match_counts, effectiveTileSize = DEFAULT_TILE_SIZE) { // MODIFIED: Added effectiveTileSize with default
     const canvas = document.getElementById('heatmap-canvas');
     const ctx = canvas.getContext('2d');
-	const downloadBtn = document.getElementById('download-btn'); // Get the download button
+    const downloadBtn = document.getElementById('download-btn');
+
+    // Use the passed effectiveTileSize
+    const currentTileSize = effectiveTileSize; // NEW: Use the dynamic size
 
     if (grid_width === 0) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas if no data
-        document.getElementById('legend-content').innerHTML = ''; // Clear the HTML legend too
-		document.getElementById('stats-list').innerHTML = ''; // NEW: Clear stats list
-        downloadBtn.disabled = true; // NEW: Disable if no heatmap
+        document.getElementById('legend-content').innerHTML = ''; // Clear the HTML legend
+        document.getElementById('stats-list').innerHTML = ''; // Clear stats list
+        downloadBtn.disabled = true;
         return;
     }
 
-    // Calculate heatmap dimensions
-    const heatmapCanvasWidth = grid_width * TILE_SIZE;
-    const heatmapCanvasHeight = grid_height * TILE_SIZE;
+    // Calculate heatmap dimensions using currentTileSize
+    const heatmapCanvasWidth = grid_width * currentTileSize; // MODIFIED
+    const heatmapCanvasHeight = grid_height * currentTileSize; // MODIFIED
 
-    // Determine legend dimensions
+    // Determine legend dimensions (based on heatmapCanvasWidth)
     const numLegendItems = rules_config.rules.length + 1; // +1 for default color
     let legendCanvasHeight = 0;
     let legendMaxItemWidth = 0;
 
-    // Temporarily draw text to measure its width for legend layout
     ctx.font = LEGEND_FONT;
     const legendTexts = [
         `Default (No Rule Matched)`,
@@ -441,18 +455,15 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
     
     legendTexts.forEach(text => {
         const textWidth = ctx.measureText(text).width;
-        // Item width includes color box, its margin, and text width
         const currentItemWidth = LEGEND_COLOR_BOX_SIZE + LEGEND_TEXT_MARGIN + textWidth;
         if (currentItemWidth > legendMaxItemWidth) {
             legendMaxItemWidth = currentItemWidth;
         }
     });
 
-    // Calculate number of columns needed based on a max desired legend width
     let numLegendColumns = Math.floor(heatmapCanvasWidth / (legendMaxItemWidth + LEGEND_ITEM_PADDING_LEFT * 2));
     if (numLegendColumns === 0) numLegendColumns = 1; // At least one column
     
-    // Total legend height based on number of rows
     const numLegendRows = Math.ceil(numLegendItems / numLegendColumns);
     legendCanvasHeight = (numLegendRows * LEGEND_ITEM_HEIGHT) + LEGEND_PADDING_TOP;
 
@@ -465,44 +476,41 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
         for (let col = 0; col < grid_width; col++) {
             const index = row * grid_width + col;
             ctx.fillStyle = heatmap_data[index];
-            ctx.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            ctx.fillRect(col * currentTileSize, row * currentTileSize, currentTileSize, currentTileSize); // MODIFIED
         }
     }
 
     // --- Draw the Legend on Canvas ---
-    // NEW: Draw a solid background for the legend area
-    ctx.fillStyle = '#FFFFFF'; // White background for the legend
-    ctx.fillRect(0, heatmapCanvasHeight, canvas.width, legendCanvasHeight); // Fill the legend area
-	
-	ctx.font = LEGEND_FONT;
-    ctx.textBaseline = 'middle'; // Align text vertically
-    ctx.fillStyle = '#000000'; // Set text color to black (or contrasting color)
+    ctx.fillStyle = '#FFFFFF'; // White background for the legend area
+    ctx.fillRect(0, heatmapCanvasHeight, canvas.width, legendCanvasHeight); 
+
+    ctx.font = LEGEND_FONT;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000000';
 
     let currentX = LEGEND_ITEM_PADDING_LEFT;
-    let currentY = heatmapCanvasHeight + LEGEND_PADDING_TOP + (LEGEND_ITEM_HEIGHT / 2); // Start halfway down the first item
+    let currentY = heatmapCanvasHeight + LEGEND_PADDING_TOP + (LEGEND_ITEM_HEIGHT / 2);
 
     // Draw default color item
     ctx.fillStyle = rules_config.default_color;
     ctx.fillRect(currentX, currentY - (LEGEND_COLOR_BOX_SIZE / 2), LEGEND_COLOR_BOX_SIZE, LEGEND_COLOR_BOX_SIZE);
-    ctx.fillStyle = '#000000'; // Reset fill style for text
+    ctx.fillStyle = '#000000';
     ctx.fillText(`Default (No Rule Matched)`, currentX + LEGEND_COLOR_BOX_SIZE + LEGEND_TEXT_MARGIN, currentY);
 
-    let itemCounter = 1; // Start from 1 as default is done
+    let itemCounter = 1;
 
     // Draw rule items
     rules_config.rules.forEach(rule => {
         if (itemCounter % numLegendColumns === 0) {
-            // Move to next row
             currentX = LEGEND_ITEM_PADDING_LEFT;
             currentY += LEGEND_ITEM_HEIGHT;
         } else {
-            // Move to next column
             currentX += legendMaxItemWidth + LEGEND_ITEM_PADDING_LEFT * 2;
         }
 
         ctx.fillStyle = rule.color;
         ctx.fillRect(currentX, currentY - (LEGEND_COLOR_BOX_SIZE / 2), LEGEND_COLOR_BOX_SIZE, LEGEND_COLOR_BOX_SIZE);
-        ctx.fillStyle = '#000000'; // Reset fill style for text
+        ctx.fillStyle = '#000000';
         ctx.fillText(formatRuleConditions(rule.rule_group), currentX + LEGEND_COLOR_BOX_SIZE + LEGEND_TEXT_MARGIN, currentY);
         itemCounter++;
     });
@@ -510,8 +518,7 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
     // Optionally, clear the HTML-based legend now that it's on canvas
     document.getElementById('legend-content').innerHTML = '';
 
-
-    // --- NEW LOGIC FOR DISPLAYING RULE MATCH STATISTICS ---
+    // --- Display Rule Match Statistics ---
     const statsList = document.getElementById('stats-list');
     statsList.innerHTML = ''; // Clear previous statistics
 
@@ -521,7 +528,6 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
     }
 
     if (totalMatchedTiles === 0 && rules_config.rules.length > 0) {
-        // Handle case where no tiles matched after rules were applied, but there are rules
         const listItem = document.createElement('li');
         listItem.innerHTML = `<strong>No tiles matched any rules or were processed successfully.</strong>`;
         statsList.appendChild(listItem);
@@ -551,12 +557,10 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
         });
     }
 
-    // --- END NEW LOGIC FOR DISPLAYING RULE MATCH STATISTICS ---
-
     downloadBtn.disabled = false; // Enable download button after successful render
 }
 
-// ... (rest of your heatmap.js file, including formatRuleConditions helper) ...
+// ... (rest of heatmap.js including formatRuleConditions helper) ...
 
 // --- formatRuleConditions helper function ---
 function formatRuleConditions(ruleGroup) {
@@ -645,7 +649,17 @@ async function generateAllHeatmaps() {
                 }
 
                 const data = await heatmapResponse.json();
-                renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts); // MODIFIED: Added data.rule_match_counts 
+                // NEW: Calculate effective TILE_SIZE based on grid dimensions
+                let effectiveTileSize = DEFAULT_TILE_SIZE;
+                if (data.grid_width > 0 && data.grid_height > 0) {
+                    const minGridDim = Math.min(data.grid_width, data.grid_height);
+                    if (minGridDim * DEFAULT_TILE_SIZE < MIN_HEATMAP_DIMENSION) {
+                        effectiveTileSize = Math.max(DEFAULT_TILE_SIZE, Math.floor(MIN_HEATMAP_DIMENSION / minGridDim));
+                    }
+                }
+                
+                // --- MODIFIED LINE BELOW: Pass effectiveTileSize to renderHeatmap ---
+                renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts, effectiveTileSize); // MODIFIED: Added effectiveTileSize
 				
 				// NEW: Trigger download after rendering each heatmap
                 downloadCurrentHeatmap(filename); // Call the modified download function
