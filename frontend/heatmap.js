@@ -12,8 +12,14 @@ function setupEventListeners() {
     document.getElementById('generate-btn').addEventListener('click', generateHeatmap);
     document.getElementById('add-rule-btn').addEventListener('click', addRuleBlock);
 
-    // NEW: Event listener for 'Download Current Heatmap' button
-    document.getElementById('download-btn').addEventListener('click', downloadCurrentHeatmap); // NEW LINE
+    // NEW: Add event listener for the Tile Size dropdown
+    document.getElementById('tile-size-select').addEventListener('change', (event) => {
+        userSelectedTileSize = parseInt(event.target.value, 10); // Update global variable
+        generateHeatmap(); // Regenerate heatmap with new size
+    });
+	
+	// MODIFIED: Use an arrow function to ensure no arguments are passed on direct click
+    document.getElementById('download-btn').addEventListener('click', () => downloadCurrentHeatmap()); // MODIFIED LINE
 
     // NEW: Event listener for 'Generate All Heatmaps' button
     document.getElementById('generate-all-btn').addEventListener('click', generateAllHeatmaps); // NEW LINE
@@ -71,7 +77,14 @@ const LEGEND_TEXT_MARGIN = 8; // Space between color box and text in legend
 const LEGEND_FONT = '12px Arial'; // Font for legend text
 const MAX_LEGEND_WIDTH = 300; // Max width for a legend column, for multi-column layout (can adjust)
 
-// ... (rest of your existing code) ...
+// frontend/heatmap.js
+
+// ... (existing constants like DEFAULT_TILE_SIZE, MIN_HEATMAP_DIMENSION, etc.) ...
+
+// NEW: Global variable to store user's selected tile size
+let userSelectedTileSize = DEFAULT_TILE_SIZE; // Initialize with the default from your options
+
+// ... (rest of your global variables, e.g., lastHeatmapData, lastGridWidth) ...
 
 async function fetchSourceFiles() {
     // ... (This function is the same as before)
@@ -435,26 +448,10 @@ async function generateHeatmap() {
 
         if (!response.ok) throw new Error(`HTTP Error: ${response.statusText}`);
         const data = await response.json();
-        
-        // NEW: Calculate effective TILE_SIZE based on grid dimensions
-        let effectiveTileSize = DEFAULT_TILE_SIZE;
-        if (data.grid_width > 0 && data.grid_height > 0) {
-            const minGridDim = Math.min(data.grid_width, data.grid_height);
-            // If current dimensions with DEFAULT_TILE_SIZE are too small, scale up
-            if (minGridDim * DEFAULT_TILE_SIZE < MIN_HEATMAP_DIMENSION) {
-                effectiveTileSize = Math.max(DEFAULT_TILE_SIZE, Math.floor(MIN_HEATMAP_DIMENSION / minGridDim));
-            }
-        }
 
-        // frontend/heatmap.js
-
-        // ... (inside generateHeatmap function) ...
-
-        // MODIFIED: Pass lastSelectedFilename to renderHeatmap
-        lastSelectedFilename = selectedFilename; // Store the currently selected filename
-        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts, effectiveTileSize);
-
-        // ... (rest of generateHeatmap) ...
+        lastSelectedFilename = selectedFilename;
+        // Pass the userSelectedTileSize directly
+        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts, userSelectedTileSize);
 
     } catch (error) {
         console.error('Error generating heatmap:', error);
@@ -472,13 +469,16 @@ let lastRulesConfig = null; // Store rules config for displaying details if need
 let lastSelectedFilename = ''; // Store the filename that generated the current heatmap
 let currentEffectiveTileSize = DEFAULT_TILE_SIZE; // Store the effective tile size
 
-// MODIFIED: Update renderHeatmap to store these values
+// MODIFIED: renderHeatmap now uses the passed effectiveTileSize (which is userSelectedTileSize)
 function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule_match_counts, effectiveTileSize = DEFAULT_TILE_SIZE) {
     const canvas = document.getElementById('heatmap-canvas');
     const ctx = canvas.getContext('2d');
     const downloadBtn = document.getElementById('download-btn');
 
-    const currentTileSize = effectiveTileSize;
+    // MODIFIED: Use the passed effectiveTileSize directly.
+    // The global currentEffectiveTileSize will be set here, for click handling.
+    currentEffectiveTileSize = effectiveTileSize; // Update the global variable
+    const currentTileSize = effectiveTileSize; // Use this for drawing
 
     if (grid_width === 0) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas if no data
@@ -823,10 +823,11 @@ async function generateAllHeatmaps() {
                     }
                 }
                 
-                // --- MODIFIED LINE BELOW: Pass effectiveTileSize to renderHeatmap ---
-                renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts, effectiveTileSize); // MODIFIED: Added effectiveTileSize
-				
-				// NEW: Trigger download after rendering each heatmap
+                // MODIFIED: Pass userSelectedTileSize directly
+                // Remove the previous effectiveTileSize calculation logic here too.
+                renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts, userSelectedTileSize);
+                
+                // NEW: Trigger download after rendering each heatmap
                 downloadCurrentHeatmap(filename); // Call the modified download function
 				
                 // Pause briefly to allow the user to see each heatmap (optional)
@@ -853,16 +854,33 @@ async function generateAllHeatmaps() {
 
 // frontend/heatmap.js
 
-// ... (existing code including generateAllHeatmaps function) ...
+// ... (previous code before downloadCurrentHeatmap) ...
 
-// --- NEW FUNCTION: Download Current Heatmap ---
-function downloadCurrentHeatmap(filenameToUse) { // MODIFIED: Accepts filename as argument
+// --- NEW FUNCTION: Download Current Heatmap (with enhanced debugging) ---
+function downloadCurrentHeatmap(filenameToUse) {
+    console.log("downloadCurrentHeatmap called. filenameToUse (argument):", filenameToUse, "Type:", typeof filenameToUse); // NEW LOG 1
+
     const canvas = document.getElementById('heatmap-canvas');
-    // const selectedFilename = document.getElementById('filename-select').value; // REMOVE OR COMMENT OUT THIS LINE
-    const selectedFilename = filenameToUse; // MODIFIED: Use the passed argument
-	
-    if (!selectedFilename || canvas.width === 0 || canvas.height === 0) {
-        alert('No heatmap to download. Please generate one first.');
+    
+    const filenameSelectElement = document.getElementById('filename-select');
+    // Safely get the dropdown value. If element is null, dropdownValue will be null.
+    const dropdownValue = filenameSelectElement ? filenameSelectElement.value : null;
+    console.log("Dropdown element found:", !!filenameSelectElement, "Dropdown value:", dropdownValue, "Type:", typeof dropdownValue); // NEW LOG 2
+
+    // Determine the filename to use: prioritize argument, then dropdown value
+    const finalFilename = filenameToUse || dropdownValue;
+    console.log("Final filename resolved:", finalFilename, "Type:", typeof finalFilename); // NEW LOG 3
+
+    // MODIFIED: Add a strict type check for finalFilename
+    if (!finalFilename || typeof finalFilename !== 'string' || canvas.width === 0 || canvas.height === 0) {
+        alert('No heatmap to download. Please ensure a source file is selected and a heatmap is generated.'); // More specific alert
+        console.error("Download aborted. Reasons:", {
+            isFinalFilenameTruthy: !!finalFilename,
+            isFinalFilenameString: typeof finalFilename === 'string',
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            resolvedFilename: finalFilename
+        });
         return;
     }
 
@@ -874,14 +892,13 @@ function downloadCurrentHeatmap(filenameToUse) { // MODIFIED: Accepts filename a
     downloadLink.href = imageDataURL;
 
     // Construct filename: remove .json, add _heatmap.png
-    const baseFilename = selectedFilename.replace(/\.json$/i, '');
+    const baseFilename = finalFilename.replace(/\.json$/i, ''); // THIS IS LIKELY LINE 880
     downloadLink.download = `${baseFilename}_heatmap.png`;
 
     // Programmatically click the link to trigger download
-    document.body.appendChild(downloadLink); // Append to body is good practice for programmatic clicks
+    document.body.appendChild(downloadLink);
     downloadLink.click();
-    document.body.removeChild(downloadLink); // Clean up
+    document.body.removeChild(downloadLink);
 }
 
-
-// ... (rest of heatmap.js including renderHeatmap) ...
+// ... (rest of heatmap.js) ...
