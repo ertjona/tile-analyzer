@@ -560,9 +560,11 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
     downloadBtn.disabled = false; // Enable download button after successful render
 }
 
-// ... (rest of heatmap.js including formatRuleConditions helper) ...
+// frontend/heatmap.js
 
-// --- formatRuleConditions helper function ---
+// ... (existing code, including renderHeatmap function) ...
+
+// --- formatRuleConditions helper function (MODIFIED for adaptive decimal places) ---
 function formatRuleConditions(ruleGroup) {
     const conditions = ruleGroup.conditions.map(cond => {
         // Mapping for display names of keys
@@ -577,7 +579,27 @@ function formatRuleConditions(ruleGroup) {
             'avg_saturation': 'Avg. Saturation'
         };
         const displayKey = keyMap[cond.key] || cond.key;
-        return `${displayKey} ${cond.op} ${cond.value.toFixed(6)}`;
+        
+        let formattedValue;
+        // Check if the value is a number to apply formatting
+        if (typeof cond.value === 'number') {
+            // If it's an integer (or very close to one), display without decimals
+            if (Number.isInteger(cond.value)) {
+                formattedValue = cond.value.toString();
+            } else {
+                // For floating-point numbers, use an adaptive approach
+                // to show enough precision without excessive zeros.
+                // This example uses a default of 3 decimal places,
+                // but you can adjust the logic further for very small numbers.
+                formattedValue = cond.value.toFixed(6); // Start with higher precision
+                // Remove trailing zeros and unnecessary decimal point
+                formattedValue = parseFloat(formattedValue).toString();
+            }
+        } else {
+            formattedValue = cond.value; // Fallback for non-numeric values
+        }
+
+        return `${displayKey} ${cond.op} ${formattedValue}`;
     });
     
     const logicalOpDisplay = ruleGroup.logical_op.toUpperCase() === 'AND' ? 'AND' : 'OR';
@@ -586,10 +608,6 @@ function formatRuleConditions(ruleGroup) {
     }
     return conditions.join('');
 }
-
-// frontend/heatmap.js
-
-// ... (existing code including renderHeatmap and formatRuleConditions) ...
 
 // --- NEW FUNCTION: Generate All Heatmaps ---
 async function generateAllHeatmaps() {
