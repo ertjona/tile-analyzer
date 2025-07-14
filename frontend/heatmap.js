@@ -73,14 +73,19 @@ async function fetchSourceFiles() {
     }
 }
 
+// frontend/heatmap.js
+
+// ... (previous code) ...
+
 function addRuleBlock() {
     const container = document.getElementById('rule-builder-container');
     const ruleBlock = document.createElement('div');
     ruleBlock.className = 'rule-block';
 
-    // No longer using ruleId as it's not needed by the backend
     ruleBlock.innerHTML = `
         <div class="rule-header">
+            <label>Name:</label>
+            <input type="text" class="rule-name" placeholder="Optional Rule Name" style="flex-grow: 1; margin-right: 10px;">
             <label>Color:</label>
             <input type="color" class="rule-color" value="#FFFF00">
             <label>Logic:</label>
@@ -91,13 +96,15 @@ function addRuleBlock() {
             <button type="button" class="remove-rule-btn" style="margin-left: auto;">Remove Rule</button>
         </div>
         <div class="conditions-container">
-            </div>
+        </div>
         <button type="button" class="add-condition-btn">+ Add Condition</button>
     `;
     container.appendChild(ruleBlock);
     // Add the first condition row to the new rule block automatically
     addConditionRow(ruleBlock);
 }
+
+// ... (rest of the file) ...
 
 function addConditionRow(ruleBlock) {
     const container = ruleBlock.querySelector('.conditions-container');
@@ -126,6 +133,10 @@ function addConditionRow(ruleBlock) {
     container.appendChild(conditionRow);
 }
 
+// frontend/heatmap.js
+
+// ... (previous code) ...
+
 // --- NEW FUNCTION: Helper to get current rules from UI ---
 function getCurrentRulesConfigFromUI() {
     const rulesConfig = {
@@ -140,15 +151,18 @@ function getCurrentRulesConfigFromUI() {
             const op = condRow.querySelector('.condition-op').value;
             const value = condRow.querySelector('.condition-value').value;
 
-            // Only add condition if value is not empty, otherwise it's an incomplete rule
             if (value !== '') {
                 conditions.push({ key, op, value: parseFloat(value) });
             }
         });
 
-        // Only add rule if it has at least one valid condition
         if (conditions.length > 0) {
+            // NEW: Get the rule name from the input field
+            const ruleNameInput = ruleBlock.querySelector('.rule-name');
+            const ruleName = ruleNameInput ? ruleNameInput.value.trim() : ''; // Get value, trim, default to empty string
+
             const rule = {
+                name: ruleName || undefined, // Include name, set to undefined if empty to avoid sending empty string
                 color: ruleBlock.querySelector('.rule-color').value,
                 rule_group: {
                     logical_op: ruleBlock.querySelector('.rule-logical-op').value,
@@ -160,6 +174,8 @@ function getCurrentRulesConfigFromUI() {
     });
     return rulesConfig;
 }
+
+// ... (rest of the file) ...
 
 // --- NEW FUNCTION: Save Current Rules ---
 async function saveCurrentRules() {
@@ -299,6 +315,10 @@ async function deleteSelectedRule() {
 }
 
 
+// frontend/heatmap.js
+
+// ... (previous code) ...
+
 // --- NEW FUNCTION: Populate Rule Builder UI ---
 function populateRuleBuilderUI(rulesConfig) {
     const container = document.getElementById('rule-builder-container');
@@ -309,6 +329,8 @@ function populateRuleBuilderUI(rulesConfig) {
         ruleBlock.className = 'rule-block';
         ruleBlock.innerHTML = `
             <div class="rule-header">
+                <label>Name:</label>
+                <input type="text" class="rule-name" placeholder="Optional Rule Name" style="flex-grow: 1; margin-right: 10px;" value="${rule.name || ''}">
                 <label>Color:</label>
                 <input type="color" class="rule-color" value="${rule.color}">
                 <label>Logic:</label>
@@ -353,12 +375,12 @@ function populateRuleBuilderUI(rulesConfig) {
             conditionsContainer.appendChild(conditionRow);
         });
     });
-    // Ensure at least one rule block is present if the loaded config had none
     if (rulesConfig.rules.length === 0) {
         addRuleBlock();
     }
 }
 
+// ... (rest of the file) ...
 
 // --- Main function to generate the heatmap ---
 async function generateHeatmap() {
@@ -419,16 +441,15 @@ async function generateHeatmap() {
 
 // frontend/heatmap.js
 
-// ... (existing code, including downloadCurrentHeatmap function) ...
+// ... (previous code including constants like DEFAULT_TILE_SIZE, MIN_HEATMAP_DIMENSION, etc.) ...
 
-// --- renderHeatmap function (MODIFIED TO USE DYNAMIC TILE_SIZE) ---
-function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule_match_counts, effectiveTileSize = DEFAULT_TILE_SIZE) { // MODIFIED: Added effectiveTileSize with default
+// --- renderHeatmap function (MODIFIED to use rule names in legend and stats) ---
+function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule_match_counts, effectiveTileSize = DEFAULT_TILE_SIZE) {
     const canvas = document.getElementById('heatmap-canvas');
     const ctx = canvas.getContext('2d');
     const downloadBtn = document.getElementById('download-btn');
 
-    // Use the passed effectiveTileSize
-    const currentTileSize = effectiveTileSize; // NEW: Use the dynamic size
+    const currentTileSize = effectiveTileSize;
 
     if (grid_width === 0) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas if no data
@@ -438,19 +459,19 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
         return;
     }
 
-    // Calculate heatmap dimensions using currentTileSize
-    const heatmapCanvasWidth = grid_width * currentTileSize; // MODIFIED
-    const heatmapCanvasHeight = grid_height * currentTileSize; // MODIFIED
+    const heatmapCanvasWidth = grid_width * currentTileSize;
+    const heatmapCanvasHeight = grid_height * currentTileSize;
 
-    // Determine legend dimensions (based on heatmapCanvasWidth)
     const numLegendItems = rules_config.rules.length + 1; // +1 for default color
     let legendCanvasHeight = 0;
     let legendMaxItemWidth = 0;
 
     ctx.font = LEGEND_FONT;
+
+    // MODIFIED: Prepare legend texts using rule names or formatted conditions
     const legendTexts = [
         `Default (No Rule Matched)`,
-        ...rules_config.rules.map(rule => formatRuleConditions(rule.rule_group))
+        ...rules_config.rules.map(rule => rule.name && rule.name.trim() !== '' ? rule.name.trim() : formatRuleConditions(rule.rule_group))
     ];
     
     legendTexts.forEach(text => {
@@ -462,12 +483,11 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
     });
 
     let numLegendColumns = Math.floor(heatmapCanvasWidth / (legendMaxItemWidth + LEGEND_ITEM_PADDING_LEFT * 2));
-    if (numLegendColumns === 0) numLegendColumns = 1; // At least one column
+    if (numLegendColumns === 0) numLegendColumns = 1;
     
     const numLegendRows = Math.ceil(numLegendItems / numLegendColumns);
     legendCanvasHeight = (numLegendRows * LEGEND_ITEM_HEIGHT) + LEGEND_PADDING_TOP;
 
-    // Set final canvas dimensions
     canvas.width = heatmapCanvasWidth;
     canvas.height = heatmapCanvasHeight + legendCanvasHeight;
 
@@ -476,12 +496,12 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
         for (let col = 0; col < grid_width; col++) {
             const index = row * grid_width + col;
             ctx.fillStyle = heatmap_data[index];
-            ctx.fillRect(col * currentTileSize, row * currentTileSize, currentTileSize, currentTileSize); // MODIFIED
+            ctx.fillRect(col * currentTileSize, row * currentTileSize, currentTileSize, currentTileSize);
         }
     }
 
     // --- Draw the Legend on Canvas ---
-    ctx.fillStyle = '#FFFFFF'; // White background for the legend area
+    ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, heatmapCanvasHeight, canvas.width, legendCanvasHeight); 
 
     ctx.font = LEGEND_FONT;
@@ -511,12 +531,13 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
         ctx.fillStyle = rule.color;
         ctx.fillRect(currentX, currentY - (LEGEND_COLOR_BOX_SIZE / 2), LEGEND_COLOR_BOX_SIZE, LEGEND_COLOR_BOX_SIZE);
         ctx.fillStyle = '#000000';
-        ctx.fillText(formatRuleConditions(rule.rule_group), currentX + LEGEND_COLOR_BOX_SIZE + LEGEND_TEXT_MARGIN, currentY);
+        // MODIFIED: Use rule.name if available, otherwise fallback to formatted conditions
+        const legendItemText = rule.name && rule.name.trim() !== '' ? rule.name.trim() : formatRuleConditions(rule.rule_group);
+        ctx.fillText(legendItemText, currentX + LEGEND_COLOR_BOX_SIZE + LEGEND_TEXT_MARGIN, currentY);
         itemCounter++;
     });
 
-    // Optionally, clear the HTML-based legend now that it's on canvas
-    document.getElementById('legend-content').innerHTML = '';
+    document.getElementById('legend-content').innerHTML = ''; // Clear the old HTML legend section
 
     // --- Display Rule Match Statistics ---
     const statsList = document.getElementById('stats-list');
@@ -550,14 +571,16 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
             const ruleCount = rule_match_counts[String(index)] || 0;
             const rulePercentage = (ruleCount / totalMatchedTiles) * 100;
             listItem = document.createElement('li');
+            // MODIFIED: Use rule.name if available, otherwise fallback to formatted conditions for stats
+            const statsItemText = rule.name && rule.name.trim() !== '' ? rule.name.trim() : formatRuleConditions(rule.rule_group);
             listItem.innerHTML = `
-                <strong>${formatRuleConditions(rule.rule_group)}:</strong> <span>${ruleCount} tiles</span> (<span>${rulePercentage.toFixed(2)}%</span>)
+                <strong>${statsItemText}:</strong> <span>${ruleCount} tiles</span> (<span>${rulePercentage.toFixed(2)}%</span>)
             `;
             statsList.appendChild(listItem);
         });
     }
 
-    downloadBtn.disabled = false; // Enable download button after successful render
+    downloadBtn.disabled = false;
 }
 
 // frontend/heatmap.js

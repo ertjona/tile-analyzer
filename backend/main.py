@@ -568,6 +568,7 @@ class RuleGroup(BaseModel):
     conditions: List[HeatmapCondition]
 
 class HeatmapRule(BaseModel):
+    name: Optional[str] = None # NEW: Optional meaningful name for the rule
     color: str
     rule_group: RuleGroup
 
