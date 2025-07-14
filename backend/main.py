@@ -137,6 +137,51 @@ def search_tiles(request: TilesRequest) -> Dict[str, Any]:
         "results": results
     }
 
+# backend/main.py
+
+# ... (existing imports, ensure HTTPException, Dict, Any are imported from fastapi and typing) ...
+# from fastapi import FastAPI, Request, HTTPException
+# from typing import List, Optional, Any, Dict
+# ...
+
+# --- NEW: Endpoint to get details for a specific image tile ---
+@app.get("/api/tile_details")
+def get_tile_details(json_filename: str, col: int, row: int) -> Dict[str, Any]:
+    """
+    Retrieves the full metadata for a specific image tile based on its source JSON filename, column, and row.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # First, find the source_file_id from the json_filename
+        cursor.execute("SELECT id FROM SourceFiles WHERE json_filename = ?", (json_filename,))
+        source_file_record = cursor.fetchone()
+
+        if not source_file_record:
+            raise HTTPException(status_code=404, detail=f"Source file '{json_filename}' not found.")
+        
+        source_file_id = source_file_record['id']
+
+        # Now, query ImageTiles using source_file_id, col, and row
+        query = """
+            SELECT * FROM ImageTiles
+            WHERE source_file_id = ? AND col = ? AND row = ?
+        """
+        cursor.execute(query, (source_file_id, col, row))
+        tile = cursor.fetchone()
+
+        if not tile:
+            raise HTTPException(status_code=404, detail=f"Tile (col={col}, row={row}) not found for '{json_filename}'.")
+        
+        return dict(tile) # Return as a dictionary
+        
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    finally:
+        conn.close()
+
+# ... (rest of your backend/main.py file) ...
 @app.post("/api/ingest")
 async def start_ingestion(request: Request, ingestion_request: IngestionRequest):
     """

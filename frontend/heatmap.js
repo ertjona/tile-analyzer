@@ -22,6 +22,24 @@ function setupEventListeners() {
     document.getElementById('save-rules-btn').addEventListener('click', saveCurrentRules); // NEW
     document.getElementById('load-rules-btn').addEventListener('click', loadSelectedRule); // NEW
     document.getElementById('delete-rule-btn').addEventListener('click', deleteSelectedRule); // NEW
+	
+	// ... (existing save/load/delete rule listeners) ...
+
+    // NEW: Add click listener to the heatmap canvas
+    document.getElementById('heatmap-canvas').addEventListener('click', handleHeatmapClick); // ADD THIS LINE
+
+    // NEW: Add click listener for the new modal close button
+    document.querySelector('#heatmap-inspector-modal .close-button').onclick = () => {
+        document.getElementById('heatmap-inspector-modal').style.display = "none";
+    };
+    window.addEventListener('click', (event) => {
+        const modal = document.getElementById('heatmap-inspector-modal');
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    });
+
+    // ... (existing event delegation for rule builder buttons) ...
 
 
     // Use event delegation to handle clicks on dynamically added buttons
@@ -428,8 +446,15 @@ async function generateHeatmap() {
             }
         }
 
-        // --- MODIFIED LINE BELOW: Pass effectiveTileSize to renderHeatmap ---
-        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts, effectiveTileSize); // MODIFIED: Added effectiveTileSize
+        // frontend/heatmap.js
+
+        // ... (inside generateHeatmap function) ...
+
+        // MODIFIED: Pass lastSelectedFilename to renderHeatmap
+        lastSelectedFilename = selectedFilename; // Store the currently selected filename
+        renderHeatmap(data.heatmap_data, data.grid_width, data.grid_height, data.rules_config, data.rule_match_counts, effectiveTileSize);
+
+        // ... (rest of generateHeatmap) ...
 
     } catch (error) {
         console.error('Error generating heatmap:', error);
@@ -439,11 +464,15 @@ async function generateHeatmap() {
     }
 }
 
-// frontend/heatmap.js
+// NEW: Store the last generated heatmap's data and dimensions for click handling
+let lastHeatmapData = null; // To store the heatmap_data array (colors)
+let lastGridWidth = 0;
+let lastGridHeight = 0;
+let lastRulesConfig = null; // Store rules config for displaying details if needed
+let lastSelectedFilename = ''; // Store the filename that generated the current heatmap
+let currentEffectiveTileSize = DEFAULT_TILE_SIZE; // Store the effective tile size
 
-// ... (previous code including constants like DEFAULT_TILE_SIZE, MIN_HEATMAP_DIMENSION, etc.) ...
-
-// --- renderHeatmap function (MODIFIED to use rule names in legend and stats) ---
+// MODIFIED: Update renderHeatmap to store these values
 function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule_match_counts, effectiveTileSize = DEFAULT_TILE_SIZE) {
     const canvas = document.getElementById('heatmap-canvas');
     const ctx = canvas.getContext('2d');
@@ -465,6 +494,14 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
     const numLegendItems = rules_config.rules.length + 1; // +1 for default color
     let legendCanvasHeight = 0;
     let legendMaxItemWidth = 0;
+	
+	// Store data for click handling BEFORE clearing canvas
+    lastHeatmapData = heatmap_data;
+    lastGridWidth = grid_width;
+    lastGridHeight = grid_height;
+    lastRulesConfig = rules_config;
+	// lastSelectedFilename = selectedFilename; // This line is not needed here if it's stored globally in generateHeatmap
+    currentEffectiveTileSize = effectiveTileSize; // Store this
 
     ctx.font = LEGEND_FONT;
 
@@ -583,9 +620,96 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
     downloadBtn.disabled = false;
 }
 
+// NEW: handleHeatmapClick function
+function handleHeatmapClick(event) {
+    // Ensure we have data to work with
+    if (!lastHeatmapData || lastGridWidth === 0 || lastGridHeight === 0) {
+        console.warn("No heatmap data available to inspect.");
+        return;
+    }
+
+    const canvas = document.getElementById('heatmap-canvas');
+    const rect = canvas.getBoundingClientRect(); // Get canvas position relative to viewport
+    const x = event.clientX - rect.left; // X position within the canvas
+    const y = event.clientY - rect.top;  // Y position within the canvas
+
+    // Calculate clicked column and row based on effective tile size
+    const clickedCol = Math.floor(x / currentEffectiveTileSize);
+    const clickedRow = Math.floor(y / currentEffectiveTileSize);
+
+    // Check if the click was within the heatmap area (not the legend)
+    if (clickedRow >= lastGridHeight) {
+        console.log("Clicked on legend area, not a tile.");
+        return; // Clicked in the legend area
+    }
+
+    // Basic boundary check
+    if (clickedCol < 0 || clickedCol >= lastGridWidth || clickedRow < 0 || clickedRow >= lastGridHeight) {
+        console.warn("Click outside valid heatmap tile area.");
+        return;
+    }
+
+    console.log(`Clicked tile at Column: ${clickedCol}, Row: ${clickedRow}`);
+
+    // NEW: Call the function to fetch details and display the modal
+    fetchTileDetailsAndDisplayModal(lastSelectedFilename, clickedCol, clickedRow); // ADD/UNCOMMENT THIS LINE
+}
+
 // frontend/heatmap.js
 
-// ... (existing code, including renderHeatmap function) ...
+// ... (previous code, ensure you have global variables like lastSelectedFilename, etc.) ...
+
+// NEW: Function to fetch tile details and display in modal
+async function fetchTileDetailsAndDisplayModal(jsonFilename, col, row) {
+    const modal = document.getElementById('heatmap-inspector-modal');
+    const img = document.getElementById('heatmap-inspector-image');
+    const metadata = document.getElementById('heatmap-inspector-metadata');
+    
+    // Clear previous content and show loading message
+    img.src = ''; // Clear image
+    metadata.textContent = 'Loading tile details...';
+    modal.style.display = 'block'; // Show modal with loading state
+
+    try {
+        const response = await fetch(`/api/tile_details?json_filename=${jsonFilename}&col=${col}&row=${row}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || `Failed to fetch tile details. Status: ${response.status}`);
+        }
+        
+        const tile = await response.json();
+
+        // Construct image URL: /images/{source_file_id}/{webp_filename}
+        // Assuming your backend serves images from /images endpoint
+        img.src = `/images/${tile.source_file_id}/${tile.webp_filename}`;
+        img.alt = `Tile: ${tile.webp_filename}`;
+
+        // Populate metadata
+        let detailsHtml = '';
+        for (const [key, value] of Object.entries(tile)) {
+            // Format numbers for display, similar to main.js inspector
+            let displayValue = value;
+            if (typeof value === 'number' && !['id', 'col', 'row', 'size', 'source_file_id'].includes(key)) {
+                // Apply adaptive formatting as previously discussed for heatmap legend
+                if (Number.isInteger(value)) {
+                    displayValue = value.toString();
+                } else {
+                    displayValue = parseFloat(value.toFixed(6)).toString(); // Format to 6 decimal places then trim
+                }
+            } else if (value === null || value === undefined) {
+                displayValue = 'N/A';
+            }
+            detailsHtml += `${key.padEnd(20)}: ${displayValue}\n`;
+        }
+        metadata.textContent = detailsHtml;
+
+    } catch (error) {
+        console.error('Error fetching tile details:', error);
+        metadata.textContent = `Failed to load tile details: ${error.message}`;
+        img.src = ''; // Clear any broken image icon
+    }
+}
 
 // --- formatRuleConditions helper function (MODIFIED for adaptive decimal places) ---
 function formatRuleConditions(ruleGroup) {
