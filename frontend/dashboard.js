@@ -125,6 +125,10 @@ async function fetchAndPopulatePerImageRulesDropdown() {
 }
 
 
+// frontend/dashboard.js
+
+// ... (previous code) ...
+
 // Function to fetch and display aggregate heatmap statistics
 async function fetchAggregateHeatmapStats() {
     const selectElement = document.getElementById('aggregate-rule-select');
@@ -184,7 +188,8 @@ async function fetchAggregateHeatmapStats() {
             const ruleCount = data.rule_match_counts[String(index)] || 0;
             const rulePercentage = (ruleCount / data.total_tiles_evaluated) * 100;
             
-            const ruleDescription = formatRuleConditionsForDashboard(rule.rule_group); 
+            // MODIFIED: Use rule.name if available, otherwise fallback to formatted conditions
+            const ruleDescription = rule.name && rule.name.trim() !== '' ? rule.name.trim() : formatRuleConditionsForDashboard(rule.rule_group); 
 
             tableHtml += `
                 <tr>
@@ -209,6 +214,10 @@ async function fetchAggregateHeatmapStats() {
     }
 }
 
+// ... (rest of the file) ...
+// frontend/dashboard.js
+
+// ... (previous code) ...
 
 // NEW: Function to fetch and display per-image rule adherence report
 async function fetchPerImageRuleReport() {
@@ -250,7 +259,8 @@ async function fetchPerImageRuleReport() {
         
         // Add headers for each rule
         data.rules_config.rules.forEach((rule, index) => {
-            const ruleDescription = formatRuleConditionsForDashboard(rule.rule_group);
+            // MODIFIED: Use rule.name if available, otherwise fallback to formatted conditions
+            const ruleDescription = rule.name && rule.name.trim() !== '' ? rule.name.trim() : formatRuleConditionsForDashboard(rule.rule_group);
             tableHtml += `
                 <th>${ruleDescription} (Count)</th>
                 <th>${ruleDescription} (%)</th>
@@ -306,7 +316,7 @@ async function fetchPerImageRuleReport() {
     }
 }
 
-
+// ... (rest of the file, including formatRuleConditionsForDashboard) ...
 // Helper function to format rule conditions for dashboard display
 function formatRuleConditionsForDashboard(ruleGroup) {
     const conditions = ruleGroup.conditions.map(cond => {
