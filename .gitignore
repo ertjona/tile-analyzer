@@ -8,3 +8,6 @@ __pycache__/
 # Environment and sensitive files
 .env
 venv/
+
+# NEW: Exclude backup folder
+backup/
