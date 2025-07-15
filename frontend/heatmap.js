@@ -2,10 +2,10 @@
 
 window.onload = function() {
     // --- Initial Setup ---
-    fetchSourceFiles();
-    setupEventListeners();
-    addRuleBlock(); // Add the first rule by default
     fetchAndPopulateRulesDropdown(); // NEW: Fetch saved rules on page load
+	fetchSourceFiles();
+	setupEventListeners();
+	addRuleBlock(); // Add the first rule by default
 };
 
 function setupEventListeners() {
@@ -45,7 +45,10 @@ function setupEventListeners() {
         }
     });
 
-    // ... (existing event delegation for rule builder buttons) ...
+    // NEW: Event listener for "Define Heatmap Rules" collapsible header
+    document.getElementById('define-rules-header').addEventListener('click', () => {
+        toggleCollapsibleSection('define-rules-header', 'define-rules-content');
+    });
 
 
     // Use event delegation to handle clicks on dynamically added buttons
@@ -574,7 +577,7 @@ function renderHeatmap(heatmap_data, grid_width, grid_height, rules_config, rule
         itemCounter++;
     });
 
-    document.getElementById('legend-content').innerHTML = ''; // Clear the old HTML legend section
+    //document.getElementById('legend-content').innerHTML = ''; // Clear the old HTML legend section
 
     // --- Display Rule Match Statistics ---
     const statsList = document.getElementById('stats-list');
@@ -711,6 +714,30 @@ async function fetchTileDetailsAndDisplayModal(jsonFilename, col, row) {
     }
 }
 
+// frontend/heatmap.js
+
+// ... (previous code) ...
+
+// --- NEW FUNCTION: Helper to toggle collapsible sections ---
+function toggleCollapsibleSection(headerId, contentId) {
+    const header = document.getElementById(headerId);
+    const content = document.getElementById(contentId);
+    const icon = header.querySelector('.collapsible-icon');
+
+    if (content.classList.contains('hidden')) {
+        // Show content
+        content.classList.remove('hidden');
+        header.classList.remove('collapsed'); // Remove collapsed state from header
+        icon.innerHTML = '&#9660;'; // Down arrow
+    } else {
+        // Hide content
+        content.classList.add('hidden');
+        header.classList.add('collapsed'); // Add collapsed state to header
+        icon.innerHTML = '&#9658;'; // Right arrow
+    }
+}
+
+// ... (rest of your file, e.g., formatRuleConditions) ...
 // --- formatRuleConditions helper function (MODIFIED for adaptive decimal places) ---
 function formatRuleConditions(ruleGroup) {
     const conditions = ruleGroup.conditions.map(cond => {

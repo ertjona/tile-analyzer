@@ -7,82 +7,323 @@
     <style>
         body {
             font-family: sans-serif;
-            margin: 0; /* Remove default body margin */
+            margin: 0;
             padding: 20px;
-            display: flex; /* Use flexbox for the main layout */
-            min-height: 100vh; /* Ensure body takes full viewport height */
-            box-sizing: border-box; /* Include padding in element's total width and height */
+            display: flex;
+            min-height: 100vh;
+            box-sizing: border-box;
         }
-        nav { margin-bottom: 20px; } /* Keep existing nav style */
 
         /* Main layout container for two columns */
         .main-container {
             display: flex;
             width: 100%;
-            gap: 20px; /* Space between columns */
+            gap: 20px;
         }
 
         /* Left Column: Controls */
         .controls-panel {
-            flex-shrink: 0; /* Don't shrink */
-            width: 350px; /* Fixed width for controls, adjust as needed */
-            padding: 15px;
-            border: 1px solid #ccc;
+            flex-shrink: 0;
+            width: 400px;
+            padding: 20px;
+            border: 1px solid #ddd;
             border-radius: 8px;
             box-sizing: border-box;
-            background-color: #f9f9f9; /* Light background for the panel */
-            overflow-y: auto; /* Enable scrolling if content overflows */
-            max-height: calc(100vh - 40px); /* Adjust based on body padding */
+            background-color: #f8f9fa;
+            overflow-y: auto;
+            max-height: calc(100vh - 40px);
         }
-        .controls-panel h3 {
-            margin-top: 0; /* Remove top margin for first h3 */
+
+        /* Section styling */
+        .workflow-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background-color: #fff;
+        }
+
+        .workflow-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin: 0 0 15px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #007bff;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .subsection {
+            margin-bottom: 20px;
+        }
+
+        .subsection:last-child {
+            margin-bottom: 0;
+        }
+
+        .subsection-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #555;
+            margin: 0 0 10px 0;
+        }
+
+        /* Form controls styling */
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-group select,
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .form-group select:focus,
+        .form-group input[type="text"]:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+
+        /* Button styling */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #545b62;
+        }
+
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background-color: #1e7e34;
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background-color: #c82333;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+            min-width: fit-content;
+        }
+
+        /* Rule builder specific styles */
+        .rule-block {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
             margin-bottom: 15px;
+            background-color: #f8f9fa;
         }
-        .controls-panel hr {
-            margin: 20px 0;
+
+        .rule-block:last-child {
+            margin-bottom: 0;
         }
-        .controls-row {
+
+        .rule-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
             margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .rule-header label {
+            font-weight: 500;
+            color: #555;
+            white-space: nowrap;
+        }
+
+        .rule-header input[type="text"] {
+            flex-grow: 1;
+            min-width: 120px;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .rule-header input[type="color"] {
+            width: 40px;
+            height: 32px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .rule-header select {
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .condition-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .condition-row select,
+        .condition-row input {
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .condition-row .condition-key {
+            min-width: 120px;
+        }
+
+        .condition-row .condition-op {
+            min-width: 60px;
+        }
+
+        .condition-row .condition-value {
+            min-width: 30px;
+        }
+
+        .remove-condition-btn,
+        .remove-rule-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .remove-condition-btn:hover,
+        .remove-rule-btn:hover {
+            background-color: #c82333;
+        }
+
+        .add-condition-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        .add-condition-btn:hover {
+            background-color: #1e7e34;
         }
 
         /* Right Column: Heatmap Display */
         .heatmap-display-area {
-            flex-grow: 1; /* Take remaining space */
-            padding: 15px;
-            border: 1px solid #ccc;
+            flex-grow: 1;
+            padding: 20px;
+            border: 1px solid #ddd;
             border-radius: 8px;
             box-sizing: border-box;
             background-color: #fff;
-            display: flex; /* Flex container for canvas, legend, stats */
-            flex-direction: column; /* Stack children vertically */
-            align-items: flex-start; /* MODIFIED: Align items to the start (left) */
-			overflow-x: auto; /* ADD THIS LINE: Enable horizontal scrolling */
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            overflow-x: auto;
         }
+
         canvas {
-            border: 1px solid black;
-            /* REMOVED: max-width: 100%; */ /* This line should no longer be here */
-            height: auto; /* Maintain aspect ratio */
+            border: 1px solid #333;
+            height: auto;
         }
+
         #loading-message {
             margin: 20px 0;
             font-weight: bold;
+            color: #007bff;
         }
+
         #heatmap-legend {
             margin-top: 20px;
-            width: 100%; /* Take full width of display area */
+            width: 100%;
             text-align: center;
         }
+
         #legend-content {
             display: flex;
             flex-wrap: wrap;
             gap: 15px;
-            justify-content: center; /* Center legend items */
+            justify-content: center;
         }
+
         .legend-item {
             display: flex;
             align-items: center;
             white-space: nowrap;
         }
+
         .legend-color-box {
             width: 20px;
             height: 20px;
@@ -90,106 +331,173 @@
             margin-right: 8px;
             flex-shrink: 0;
         }
+
         #rule-stats-summary {
             margin-top: 20px;
             width: 100%;
         }
+
         #stats-list {
             list-style-type: none;
             padding: 0;
-            text-align: left; /* Align text left within the list */
-            width: fit-content; /* Shrink to content */
-            margin: 0 auto; /* Center the list itself */
+            text-align: left;
+            width: fit-content;
+            margin: 0 auto;
         }
 
-        /* Modal styles (copied from previous step and adjusted for unique IDs) */
+        /* Modal styles */
         .modal {
-            display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5);
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
         }
+
         .modal-content {
-            background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px;
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 1000px;
+            border-radius: 8px;
         }
+
         .inspector-body {
-            display: flex; gap: 20px;
+            display: flex;
+            gap: 20px;
         }
+
         #heatmap-inspector-image-container {
             flex-shrink: 0;
         }
+
         #heatmap-inspector-image {
-            max-width: 400px; border: 1px solid #ddd;
+            max-width: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
         }
+
         pre {
-            background-color: #eee; padding: 10px; border-radius: 5px; overflow-x: auto; /* Allow horizontal scrolling for long lines */
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
             flex-grow: 1;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
         }
+
         .close-button {
-            color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close-button:hover {
+            color: #000;
         }
 
         /* Responsive adjustments */
-        @media (max-width: 900px) {
+        @media (max-width: 1024px) {
             .main-container {
-                flex-direction: column; /* Stack columns vertically on smaller screens */
+                flex-direction: column;
             }
             .controls-panel {
-                width: auto; /* Auto width when stacked */
-                max-height: none; /* Remove max-height constraint */
+                width: auto;
+                max-height: none;
             }
         }
     </style>
 </head>
 <body>
-    <!-- 
-	<nav>
-        <a href="/">« Back to Inspector</a>
-    </nav>
-	//-->
     <div class="main-container">
         <div class="controls-panel">
-            <h1>Spatial Heatmap Analysis</h1> <h3>1. Select Source File</h3>
-            <div class="controls-row">
-                <label for="filename-select">Source File:</label>
-                <select id="filename-select">
-                    <option value="">-- Please select a file --</option>
-                </select>
-            </div>
-            <hr>
-
-            <h3>2. Define Heatmap Rules (in order of priority)</h3>
-            <div id="rule-builder-container">
-                </div>
-            <button id="add-rule-btn">+ Add Rule</button>
-            <hr>
-
-            <h3>3. Save / Load Rules</h3>
-            <div class="save-rules-section" style="margin-bottom: 15px;">
-                <label for="rule-name-input">Save Current Rules As:</label>
-                <input type="text" id="rule-name-input" placeholder="Enter rule set name">
-                <button id="save-rules-btn">Save Rules</button>
-            </div>
-            <div class="load-rules-section">
-                <label for="load-rule-select">Load Saved Rules:</label>
-                <select id="load-rule-select">
-                    <option value="">-- Select a saved rule set --</option>
-                </select>
-                <button id="load-rules-btn">Load Rules</button>
-                <button id="delete-rule-btn" style="margin-left: 5px;">Delete Selected</button>
-            </div>
-            <hr>
+            <h1 style="margin: 0 0 25px 0; color: #333; font-size: 24px;">Spatial Heatmap Analysis</h1>
             
-            <div style="margin-bottom: 15px;">
-                <label for="tile-size-select">Tile Size / Zoom:</label>
-                <select id="tile-size-select">
-                    <option value="2">Normal (2px)</option>
-                    <option value="4">Medium (4px)</option>
-                    <option value="8">Large (8px)</option>
-                    <option value="16">XL (16px)</option>
-                </select>
+            <!-- RULE MANAGEMENT Section -->
+            <div class="workflow-section">
+                <h2 class="section-title">⚙️ Rule Management</h2>
+                
+                <!-- Load Saved Rules Subsection -->
+                <div class="subsection">
+                    <h3 class="subsection-title">Load Saved Rules</h3>
+                    <div class="form-group">
+                        <label for="load-rule-select">Saved Rule Sets:</label>
+                        <select id="load-rule-select">
+                            <option value="">-- Select a saved rule set --</option>
+                        </select>
+                    </div>
+                    <div class="btn-group">
+                        <button id="load-rules-btn" class="btn btn-primary">Load</button>
+                        <button id="delete-rule-btn" class="btn btn-danger">Delete</button>
+                    </div>
+                </div>
+
+                <!-- Current Rules Subsection -->
+                <div class="subsection">
+                    <h3 class="subsection-title">Current Rules (in priority order)</h3>
+                    <div id="rule-builder-container">
+                        <!-- Rule blocks will be dynamically added here -->
+                    </div>
+                    <button id="add-rule-btn" class="btn btn-success" style="margin-top: 10px;">+ Add Rule</button>
+                </div>
+
+                <!-- Save Rules Subsection -->
+                <div class="subsection">
+                    <h3 class="subsection-title">Save Rules</h3>
+                    <div class="form-group">
+                        <label for="rule-name-input">Rule Set Name:</label>
+                        <input type="text" id="rule-name-input" placeholder="Enter rule set name">
+                    </div>
+                    <button id="save-rules-btn" class="btn btn-success">Save Current Rules</button>
+                </div>
             </div>
-            <h3>4. Generate Heatmap</h3>
-            <button id="generate-btn">Generate Heatmap</button>
-            <button id="download-btn" style="margin-left: 10px;" disabled>Download Current Heatmap</button>
-            <button id="generate-all-btn" style="margin-left: 10px;">Generate All Heatmaps</button>
+			
+			<!-- DATA SOURCE Section -->
+            <div class="workflow-section">
+                <h2 class="section-title">📊 Data Source</h2>
+                <div class="form-group">
+                    <label for="filename-select">Select Source File:</label>
+                    <select id="filename-select">
+                        <option value="">-- Please select a file --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- VISUALIZATION SETTINGS Section -->
+            <div class="workflow-section">
+                <h2 class="section-title">🎨 Visualization Settings</h2>
+                <div class="form-group">
+                    <label for="tile-size-select">Tile Size / Zoom Level:</label>
+                    <select id="tile-size-select">
+                        <option value="2">Normal (2px)</option>
+                        <option value="4">Medium (4px)</option>
+                        <option value="8">Large (8px)</option>
+                        <option value="16">XL (16px)</option>
+                    </select>
+                </div>
+                <!-- Future expandable area for other visualization settings -->
+            </div>
+
+            <!-- ACTIONS Section -->
+            <div class="workflow-section">
+                <h2 class="section-title">🚀 Actions</h2>
+                <div class="btn-group" style="flex-direction: column; gap: 10px;">
+                    <button id="generate-btn" class="btn btn-primary">Generate Single Heatmap</button>
+                    <button id="generate-all-btn" class="btn btn-secondary">Generate All Heatmaps</button>
+                    <button id="download-btn" class="btn btn-success" disabled>Download Current Heatmap</button>
+                </div>
+            </div>
         </div>
 
         <div class="heatmap-display-area">
@@ -198,21 +506,25 @@
             </div>
             
             <canvas id="heatmap-canvas"></canvas>
-            
+            <!--
             <div id="heatmap-legend">
                 <h3>Legend</h3>
                 <div id="legend-content">
-                    </div>
+                     Legend items will be populated here 
+                </div>
             </div>
+			-->
             
             <div id="rule-stats-summary">
                 <h3>Rule Match Statistics</h3>
                 <ul id="stats-list">
-                    </ul>
+                    <!-- Statistics will be populated here -->
+                </ul>
             </div>
         </div>
     </div>
 
+    <!-- Modal for tile inspection -->
     <div id="heatmap-inspector-modal" class="modal">
         <div class="modal-content">
             <span class="close-button">&times;</span>
