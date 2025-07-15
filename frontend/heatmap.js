@@ -45,10 +45,10 @@ function setupEventListeners() {
         }
     });
 
-    // NEW: Event listener for "Define Heatmap Rules" collapsible header
-    document.getElementById('define-rules-header').addEventListener('click', () => {
-        toggleCollapsibleSection('define-rules-header', 'define-rules-content');
-    });
+    // REMOVE THE FOLLOWING BLOCK AS IT CAUSES THE ERROR:
+    // document.getElementById('define-rules-header').addEventListener('click', () => {
+    //    toggleCollapsibleSection('define-rules-header', 'define-rules-content');
+    //});
 
 
     // Use event delegation to handle clicks on dynamically added buttons
@@ -718,24 +718,24 @@ async function fetchTileDetailsAndDisplayModal(jsonFilename, col, row) {
 
 // ... (previous code) ...
 
-// --- NEW FUNCTION: Helper to toggle collapsible sections ---
-function toggleCollapsibleSection(headerId, contentId) {
-    const header = document.getElementById(headerId);
-    const content = document.getElementById(contentId);
-    const icon = header.querySelector('.collapsible-icon');
-
-    if (content.classList.contains('hidden')) {
-        // Show content
-        content.classList.remove('hidden');
-        header.classList.remove('collapsed'); // Remove collapsed state from header
-        icon.innerHTML = '&#9660;'; // Down arrow
-    } else {
-        // Hide content
-        content.classList.add('hidden');
-        header.classList.add('collapsed'); // Add collapsed state to header
-        icon.innerHTML = '&#9658;'; // Right arrow
-    }
-}
+// REMOVE THIS ENTIRE HELPER FUNCTION AS IT'S NO LONGER USED AND ITS HTML COUNTERPARTS ARE MISSING:
+//function toggleCollapsibleSection(headerId, contentId) {
+//    const header = document.getElementById(headerId);
+//    const content = document.getElementById(contentId);
+//    const icon = header.querySelector('.collapsible-icon');
+//
+//    if (content.classList.contains('hidden')) {
+//        // Show content
+//        content.classList.remove('hidden');
+//        header.classList.remove('collapsed'); // Remove collapsed state from header
+//        icon.innerHTML = '&#9660;'; // Down arrow
+//    } else {
+//        // Hide content
+//        content.classList.add('hidden');
+//        header.classList.add('collapsed'); // Add collapsed state to header
+//        icon.innerHTML = '&#9658;'; // Right arrow
+//    }
+//}
 
 // ... (rest of your file, e.g., formatRuleConditions) ...
 // --- formatRuleConditions helper function (MODIFIED for adaptive decimal places) ---
