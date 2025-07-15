@@ -5,99 +5,213 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spatial Heatmap Analysis</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        nav { margin-bottom: 20px; }
-        .controls { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; }
-        canvas { border: 1px solid black; }
-        .rule-block { border: 1px solid #007bff; border-radius: 5px; padding: 10px; margin-bottom: 10px; }
-        .condition-row, .rule-header { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
-        .rule-header { margin-bottom: 10px; }
-        select, input, button { padding: 5px; }
+        body {
+            font-family: sans-serif;
+            margin: 0; /* Remove default body margin */
+            padding: 20px;
+            display: flex; /* Use flexbox for the main layout */
+            min-height: 100vh; /* Ensure body takes full viewport height */
+            box-sizing: border-box; /* Include padding in element's total width and height */
+        }
+        nav { margin-bottom: 20px; } /* Keep existing nav style */
+
+        /* Main layout container for two columns */
+        .main-container {
+            display: flex;
+            width: 100%;
+            gap: 20px; /* Space between columns */
+        }
+
+        /* Left Column: Controls */
+        .controls-panel {
+            flex-shrink: 0; /* Don't shrink */
+            width: 350px; /* Fixed width for controls, adjust as needed */
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box;
+            background-color: #f9f9f9; /* Light background for the panel */
+            overflow-y: auto; /* Enable scrolling if content overflows */
+            max-height: calc(100vh - 40px); /* Adjust based on body padding */
+        }
+        .controls-panel h3 {
+            margin-top: 0; /* Remove top margin for first h3 */
+            margin-bottom: 15px;
+        }
+        .controls-panel hr {
+            margin: 20px 0;
+        }
+        .controls-row {
+            margin-bottom: 15px;
+        }
+
+        /* Right Column: Heatmap Display */
+        .heatmap-display-area {
+            flex-grow: 1; /* Take remaining space */
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box;
+            background-color: #fff;
+            display: flex; /* Flex container for canvas, legend, stats */
+            flex-direction: column; /* Stack children vertically */
+            align-items: flex-start; /* MODIFIED: Align items to the start (left) */
+			overflow-x: auto; /* ADD THIS LINE: Enable horizontal scrolling */
+        }
+        canvas {
+            border: 1px solid black;
+            /* REMOVED: max-width: 100%; */ /* This line should no longer be here */
+            height: auto; /* Maintain aspect ratio */
+        }
+        #loading-message {
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        #heatmap-legend {
+            margin-top: 20px;
+            width: 100%; /* Take full width of display area */
+            text-align: center;
+        }
+        #legend-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center; /* Center legend items */
+        }
         .legend-item {
             display: flex;
             align-items: center;
-            margin-right: 20px; /* Space between items */
-            margin-bottom: 10px; /* Space below items */
-            white-space: nowrap; /* Prevent text wrapping within a single item */
+            white-space: nowrap;
         }
         .legend-color-box {
             width: 20px;
             height: 20px;
             border: 1px solid #333;
-            margin-right: 8px; /* Space between color box and text */
-            flex-shrink: 0; /* Prevent color box from shrinking */
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+        #rule-stats-summary {
+            margin-top: 20px;
+            width: 100%;
+        }
+        #stats-list {
+            list-style-type: none;
+            padding: 0;
+            text-align: left; /* Align text left within the list */
+            width: fit-content; /* Shrink to content */
+            margin: 0 auto; /* Center the list itself */
+        }
+
+        /* Modal styles (copied from previous step and adjusted for unique IDs) */
+        .modal {
+            display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px;
+        }
+        .inspector-body {
+            display: flex; gap: 20px;
+        }
+        #heatmap-inspector-image-container {
+            flex-shrink: 0;
+        }
+        #heatmap-inspector-image {
+            max-width: 400px; border: 1px solid #ddd;
+        }
+        pre {
+            background-color: #eee; padding: 10px; border-radius: 5px; overflow-x: auto; /* Allow horizontal scrolling for long lines */
+            flex-grow: 1;
+        }
+        .close-button {
+            color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 900px) {
+            .main-container {
+                flex-direction: column; /* Stack columns vertically on smaller screens */
+            }
+            .controls-panel {
+                width: auto; /* Auto width when stacked */
+                max-height: none; /* Remove max-height constraint */
+            }
         }
     </style>
 </head>
 <body>
-    <nav>
+    <!-- 
+	<nav>
         <a href="/">« Back to Inspector</a>
     </nav>
-    <h1>Spatial Heatmap Analysis</h1>
-
-    <div class="controls">
-        <h3>1. Select Source File</h3>
-        <div class="filter-row">
-            <label for="filename-select">Source File:</label>
-            <select id="filename-select">
-                <option value="">-- Please select a file --</option>
-            </select>
-        </div>
-        <hr>
-
-        <h3>2. Define Heatmap Rules (in order of priority)</h3>
-        <div id="rule-builder-container">
+	//-->
+    <div class="main-container">
+        <div class="controls-panel">
+            <h1>Spatial Heatmap Analysis</h1> <h3>1. Select Source File</h3>
+            <div class="controls-row">
+                <label for="filename-select">Source File:</label>
+                <select id="filename-select">
+                    <option value="">-- Please select a file --</option>
+                </select>
             </div>
-        <button id="add-rule-btn">+ Add Rule</button>
-        <hr>
+            <hr>
 
-        <h3>3. Save / Load Rules</h3>
-        <div class="save-rules-section" style="margin-bottom: 15px;">
-            <label for="rule-name-input">Save Current Rules As:</label>
-            <input type="text" id="rule-name-input" placeholder="Enter rule set name">
-            <button id="save-rules-btn">Save Rules</button>
-        </div>
-        <div class="load-rules-section">
-            <label for="load-rule-select">Load Saved Rules:</label>
-            <select id="load-rule-select">
-                <option value="">-- Select a saved rule set --</option>
-            </select>
-            <button id="load-rules-btn">Load Rules</button>
-            <button id="delete-rule-btn" style="margin-left: 5px;">Delete Selected</button>
-        </div>
-        <hr>
-        
-        <div style="margin-bottom: 15px;">
-            <label for="tile-size-select">Tile Size / Zoom:</label>
-            <select id="tile-size-select">
-                <option value="2">Normal (2px)</option>
-                <option value="4">Medium (4px)</option>
-                <option value="8">Large (8px)</option>
-                <option value="16">XL (16px)</option>
-            </select>
-        </div>
-        <h3>4. Generate Heatmap</h3>
-        <button id="generate-btn">Generate Heatmap</button>
-        <button id="download-btn" style="margin-left: 10px;" disabled>Download Current Heatmap</button> <button id="generate-all-btn" style="margin-left: 10px;">Generate All Heatmaps</button>
-    </div>
+            <h3>2. Define Heatmap Rules (in order of priority)</h3>
+            <div id="rule-builder-container">
+                </div>
+            <button id="add-rule-btn">+ Add Rule</button>
+            <hr>
 
-    <div id="loading-message" style="display: none;">
-        <p>Loading heatmap data, this may take a moment...</p>
-    </div>
-    
-    <canvas id="heatmap-canvas" width="800" height="600"></canvas>
-	
-	<div id="heatmap-legend" style="margin-top: 20px;">
-        <h3>Legend</h3>
-        <div id="legend-content" style="display: flex; flex-wrap: wrap; gap: 15px;">
+            <h3>3. Save / Load Rules</h3>
+            <div class="save-rules-section" style="margin-bottom: 15px;">
+                <label for="rule-name-input">Save Current Rules As:</label>
+                <input type="text" id="rule-name-input" placeholder="Enter rule set name">
+                <button id="save-rules-btn">Save Rules</button>
             </div>
+            <div class="load-rules-section">
+                <label for="load-rule-select">Load Saved Rules:</label>
+                <select id="load-rule-select">
+                    <option value="">-- Select a saved rule set --</option>
+                </select>
+                <button id="load-rules-btn">Load Rules</button>
+                <button id="delete-rule-btn" style="margin-left: 5px;">Delete Selected</button>
+            </div>
+            <hr>
+            
+            <div style="margin-bottom: 15px;">
+                <label for="tile-size-select">Tile Size / Zoom:</label>
+                <select id="tile-size-select">
+                    <option value="2">Normal (2px)</option>
+                    <option value="4">Medium (4px)</option>
+                    <option value="8">Large (8px)</option>
+                    <option value="16">XL (16px)</option>
+                </select>
+            </div>
+            <h3>4. Generate Heatmap</h3>
+            <button id="generate-btn">Generate Heatmap</button>
+            <button id="download-btn" style="margin-left: 10px;" disabled>Download Current Heatmap</button>
+            <button id="generate-all-btn" style="margin-left: 10px;">Generate All Heatmaps</button>
+        </div>
+
+        <div class="heatmap-display-area">
+            <div id="loading-message" style="display: none;">
+                <p>Loading heatmap data, this may take a moment...</p>
+            </div>
+            
+            <canvas id="heatmap-canvas"></canvas>
+            
+            <div id="heatmap-legend">
+                <h3>Legend</h3>
+                <div id="legend-content">
+                    </div>
+            </div>
+            
+            <div id="rule-stats-summary">
+                <h3>Rule Match Statistics</h3>
+                <ul id="stats-list">
+                    </ul>
+            </div>
+        </div>
     </div>
-	
-	<div id="rule-stats-summary" style="margin-top: 20px;">
-    <h3>Rule Match Statistics</h3>
-    <ul id="stats-list" style="list-style-type: none; padding: 0;">
-        </ul>
-	</div>
 
     <div id="heatmap-inspector-modal" class="modal">
         <div class="modal-content">
