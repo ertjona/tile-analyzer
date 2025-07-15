@@ -127,7 +127,7 @@ function addRuleBlock() {
                 <option value="AND">All conditions must match (AND)</option>
                 <option value="OR">Any condition can match (OR)</option>
             </select>
-            <button type="button" class="remove-rule-btn" style="margin-left: auto;">Remove Rule</button>
+            <button type="button" class="remove-rule-btn" style="margin-left: auto;">&times;</button>
         </div>
         <div class="conditions-container">
         </div>
@@ -372,7 +372,7 @@ function populateRuleBuilderUI(rulesConfig) {
                     <option value="AND" ${rule.rule_group.logical_op === 'AND' ? 'selected' : ''}>All conditions must match (AND)</option>
                     <option value="OR" ${rule.rule_group.logical_op === 'OR' ? 'selected' : ''}>Any condition can match (OR)</option>
                 </select>
-                <button type="button" class="remove-rule-btn" style="margin-left: auto;">Remove Rule</button>
+                <button type="button" class="remove-rule-btn" style="margin-left: auto;">&times;</button>
             </div>
             <div class="conditions-container">
             </div>
