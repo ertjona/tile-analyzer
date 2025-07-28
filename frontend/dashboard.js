@@ -3,6 +3,7 @@
 // Add a mapping for display names of keys
 const KEY_DISPLAY_MAP = {
     'edge_density': 'Edge Density',
+	'edge_density_3060': 'Edge Density 3060',
     'foreground_ratio': 'Foreground Ratio',
     'max_subject_area': 'Max Subject Area',
     'laplacian': 'Laplacian',

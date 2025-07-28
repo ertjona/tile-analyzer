@@ -248,16 +248,24 @@ async def start_ingestion(request: Request, ingestion_request: IngestionRequest)
                 for tile_name, attributes in tiles.items():
                     if not isinstance(attributes, dict): continue
                     tile_values = (
-                        source_file_id, tile_name, attributes.get('status'), attributes.get('col'),
-                        attributes.get('row'), attributes.get('size'), attributes.get('laplacian'),
-                        attributes.get('avg_brightness'), attributes.get('avg_saturation'),
-                        attributes.get('entropy'), attributes.get('edge_density'),
+                        source_file_id, 
+                        tile_name, 
+                        attributes.get('status'), 
+                        attributes.get('col'),
+                        attributes.get('row'), 
+                        attributes.get('size'), 
+                        attributes.get('laplacian'),
+                        attributes.get('avg_brightness'), 
+                        attributes.get('avg_saturation'),
+                        attributes.get('entropy'), 
+                        attributes.get('edge_density'),
+                        attributes.get('edge_density_3060'), # Add the new value
                         attributes.get('foreground_ratio'),
-                        attributes.get('max_subject_area') # Add the new value
+                        attributes.get('max_subject_area') 
                     )
                     cursor.execute(
                         '''INSERT INTO ImageTiles (source_file_id, webp_filename, status, col, row, size, 
-                                                  laplacian, avg_brightness, avg_saturation, entropy, edge_density, foreground_ratio, max_subject_area)
+                                                  laplacian, avg_brightness, avg_saturation, entropy, edge_density, edge_density_3060, foreground_ratio, max_subject_area)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                         tile_values
                     )

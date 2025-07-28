@@ -88,6 +88,7 @@ def process_single_tile(filepath, skip_measurements=None, debug_output_dir=None,
             "avg_saturation": lambda: np.mean(hsv_img[:, :, 1]) / 255.0,
             "entropy": lambda: shannon_entropy(gray_img),
             "edge_density": lambda: calculate_edge_density(gray_img),
+            "edge_density_3060": lambda: calculate_edge_density_3060(gray_img),
             "foreground_ratio": lambda: calculate_foreground_ratio(hsv_img),
             "max_subject_area": lambda: calculate_max_subject_area(
                 hsv_img, # Corrected typo: hsv -> hsv_img
@@ -132,6 +133,11 @@ def calculate_edge_density(gray_img):
     logging.debug(f"Mean of Edges: {np.mean(edges)}")
     return np.mean(edges) / 255.0
 
+def calculate_edge_density_3060(gray_image):
+    """Calculates edge density using fixed Canny thresholds of 30 and 60."""
+    edged = cv2.Canny(gray_image, 30, 60)
+    return np.sum(edged > 0) / (edged.shape[0] * edged.shape[1])
+    
 def calculate_foreground_ratio(hsv, lower_white=(0, 0, 200), upper_white=(180, 20, 255), kernel_size=3):
     """Calculates and returns the foreground ratio for a given image."""
     lower_white_np = np.array(lower_white, dtype=np.uint8)
@@ -232,6 +238,8 @@ def generate_tile_data(args, debug_mode_active):
         skip_measurements.add('entropy')
     if hasattr(args, 'skip_edge_density') and args.skip_edge_density:
         skip_measurements.add('edge_density')
+    if hasattr(args, 'skip_edge_density_3060') and args.skip_edge_density_3060:
+        skip_measurements.add('edge_density_3060')
 
     worker_func = partial(
         process_single_tile,

@@ -72,6 +72,7 @@ def process_single_json(file_path, db_connection):
             attributes.get('avg_saturation'),
             attributes.get('entropy'),
             attributes.get('edge_density'),
+            attributes.get('edge_density_3060'),
             attributes.get('foreground_ratio'), # NEW
             attributes.get('max_subject_area') # NEW
         )
@@ -79,9 +80,9 @@ def process_single_json(file_path, db_connection):
         # MODIFIED: Added foreground_ratio and max_subject_area columns to INSERT statement
         cursor.execute(
             '''INSERT INTO ImageTiles (source_file_id, webp_filename, status, col, row, size, 
-                                      laplacian, avg_brightness, avg_saturation, entropy, edge_density,
+                                      laplacian, avg_brightness, avg_saturation, entropy, edge_density, edge_density_3060,
                                       foreground_ratio, max_subject_area)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             tile_values
         )
         tile_count += 1

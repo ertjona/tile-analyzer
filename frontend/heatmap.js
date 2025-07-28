@@ -147,6 +147,7 @@ function addConditionRow(ruleBlock) {
     conditionRow.innerHTML = `
         <select class="condition-key">
             <option value="edge_density">Edge Density</option>
+			<option value="edge_density_3060">Edge Density 3060</option>
             <option value="foreground_ratio">Foreground Ratio</option>
 			<option value="max_subject_area">Max Subject Area</option>
             <option value="laplacian">Laplacian</option>
@@ -387,6 +388,7 @@ function populateRuleBuilderUI(rulesConfig) {
             conditionRow.innerHTML = `
                 <select class="condition-key">
                     <option value="edge_density" ${condition.key === 'edge_density' ? 'selected' : ''}>Edge Density</option>
+					<option value="edge_density_3060" ${condition.key === 'edge_density_3060' ? 'selected' : ''}>Edge Density 3060</option>
                     <option value="foreground_ratio" ${condition.key === 'foreground_ratio' ? 'selected' : ''}>Foreground Ratio</option>
                     <option value="max_subject_area" ${condition.key === 'max_subject_area' ? 'selected' : ''}>Max Subject Area</option>
                     <option value="laplacian" ${condition.key === 'laplacian' ? 'selected' : ''}>Laplacian</option>
@@ -744,6 +746,7 @@ function formatRuleConditions(ruleGroup) {
         // Mapping for display names of keys
         const keyMap = {
             'edge_density': 'Edge Density',
+			'edge_density_3060': 'Edge Density 3060',
             'foreground_ratio': 'Foreground Ratio',
             'max_subject_area': 'Max Subject Area',
             'laplacian': 'Laplacian',

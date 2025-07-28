@@ -15,6 +15,7 @@ DB_PATH = SCRIPT_DIR.parent / "database" / "analysis.db"
 COLUMN_DISPLAY_MAP = {
     'max_subject_area': 'Max Subject Area',
     'edge_density': 'Edge Density',
+    'edge_density_3060': 'Edge Density 3060',
     'laplacian': 'Laplacian',
     'avg_brightness': 'Average Brightness',
     'avg_saturation': 'Average Saturation',

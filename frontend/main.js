@@ -22,6 +22,7 @@ const ALL_COLUMNS = [
     { key: 'avg_brightness', label: 'Avg Brightness' },
     { key: 'avg_saturation', label: 'Avg Saturation' },
     { key: 'edge_density', label: 'Edge Density' },
+	{ key: 'edge_density_3060', label: 'Edge Density 3060' },
 	{ key: 'foreground_ratio', label: 'Foreground Ratio' },
 	{ key: 'max_subject_area', label: 'Max Subject Area' }
 ];
@@ -148,7 +149,7 @@ function setupEventListeners() {
 // --- All Helper Functions ---
 
 function populateDisplayOptions() {
-    const defaultVisible = ['json_filename', 'webp_filename', 'edge_density', 'avg_brightness', 'size', 'laplacian', 'max_subject_area']; // MODIFIED
+    const defaultVisible = ['json_filename', 'webp_filename', 'edge_density', 'edge_density_3060', 'avg_brightness', 'size', 'laplacian', 'max_subject_area']; // MODIFIED
     const container = document.getElementById('display-options-dropdown');
     let content = '';
     ALL_COLUMNS.forEach(col => {
@@ -176,6 +177,7 @@ function addFilterRow() {
             <option value="col">Column</option>
 			<option value="row">Row</option>
 			<option value="edge_density">Edge Density</option>
+			<option value="edge_density_3060">Edge Density 3060</option>
             <option value="entropy">Entropy</option>
             <option value="laplacian">Laplacian</option>
             <option value="avg_brightness">Avg. Brightness</option>
