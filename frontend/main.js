@@ -173,7 +173,9 @@ function addFilterRow() {
     newFilterRow.innerHTML = `
         <label>Filter by:</label>
         <select class="filter-key">
-            <option value="edge_density">Edge Density</option>
+            <option value="col">Column</option>
+			<option value="row">Row</option>
+			<option value="edge_density">Edge Density</option>
             <option value="entropy">Entropy</option>
             <option value="laplacian">Laplacian</option>
             <option value="avg_brightness">Avg. Brightness</option>
