@@ -55,6 +55,9 @@ def _fetch_raw_data(db_path, column_name, where_clause_str):
     conn = None 
     try:
         conn = sqlite3.connect(db_path)
+        # --- ACTION: ADD PRAGMAS ---
+        conn.execute("PRAGMA journal_mode = WAL;") # Good practice
+        conn.execute("PRAGMA cache_size = -512000;") # 512MB cache for analysis
         cursor = conn.cursor()
         query = f"SELECT {column_name} FROM ImageTiles{where_clause_str}"
         print(f"\nExecuting query: {query}")
@@ -209,6 +212,144 @@ def analyze_metric_from_db(db_path, column_name, output_dir=None,
     else:
         print("Output directory not specified. Skipping histogram generation.")
 
+import pandas as pd # You'll need to import pandas for this
+
+def compare_metric_by_source(db_path, column_name, output_dir, min_filter_value=None, max_filter_value=None):
+    """
+    Generates a box plot comparing the distribution of a metric across different source files.
+    """
+    if not os.path.exists(db_path):
+        print(f"Error: Database not found at {db_path}")
+        return
+
+    display_column_name = COLUMN_DISPLAY_MAP.get(column_name, column_name)
+    os.makedirs(output_dir, exist_ok=True)
+
+    print("Fetching data for comparison across source files...")
+    
+    # SQL query to join ImageTiles with SourceFiles and get the metric and source filename
+    query = f"""
+    SELECT
+        sf.json_filename,
+        it.{column_name}
+    FROM
+        ImageTiles it
+    JOIN
+        SourceFiles sf ON it.source_file_id = sf.id
+    WHERE
+        it.status = 'success' AND it.{column_name} IS NOT NULL
+    """
+
+    # Add optional min/max filters to the query
+    if min_filter_value is not None:
+        query += f" AND it.{column_name} >= {min_filter_value}"
+    if max_filter_value is not None:
+        query += f" AND it.{column_name} <= {max_filter_value}"
+
+    try:
+        conn = sqlite3.connect(db_path)
+        # Use pandas to read the SQL query directly into a DataFrame
+        df = pd.read_sql_query(query, conn)
+    except sqlite3.Error as e:
+        print(f"Database error during data fetch: {e}")
+        return
+    finally:
+        if conn:
+            conn.close()
+
+    if df.empty:
+        print("No data found for the specified criteria.")
+        return
+
+    print(f"Data fetched successfully. Found {len(df)} records across {df['json_filename'].nunique()} source files.")
+
+    # Generate the box plot
+    plt.figure(figsize=(160, 100))
+    sns.boxplot(x='json_filename', y=column_name, data=df)
+    plt.title(f'Comparison of {display_column_name} Across Source Files')
+    plt.xlabel('Source File')
+    plt.ylabel(f'{display_column_name} Value')
+    plt.xticks(rotation=45, ha='right') # Rotate labels to prevent overlap
+    plt.tight_layout() # Adjust layout to make room for labels
+    
+    output_path = os.path.join(output_dir, f"{column_name}_comparison_by_source.png")
+    plt.savefig(output_path)
+    plt.close()
+    
+    print(f"Comparison plot saved to: {output_path}")
+    
+import pandas as pd
+import numpy as np # Import numpy for percentile calculations
+
+def export_summary_to_csv(db_path, column_name, output_dir, min_filter_value=None, max_filter_value=None):
+    """
+    Calculates summary statistics, including specific percentiles, for a metric, 
+    grouped by source file, and saves to a CSV.
+    """
+    display_column_name = COLUMN_DISPLAY_MAP.get(column_name, column_name)
+    os.makedirs(output_dir, exist_ok=True)
+
+    print(f"Fetching data to create CSV summary for '{display_column_name}'...")
+    
+    # Same data fetching query as before
+    query = f"""
+    SELECT
+        sf.json_filename,
+        it.{column_name}
+    FROM
+        ImageTiles it
+    JOIN
+        SourceFiles sf ON it.source_file_id = sf.id
+    WHERE
+        it.status = 'success' AND it.{column_name} IS NOT NULL
+    """
+    if min_filter_value is not None:
+        query += f" AND it.{column_name} >= {min_filter_value}"
+    if max_filter_value is not None:
+        query += f" AND it.{column_name} <= {max_filter_value}"
+
+    try:
+        conn = sqlite3.connect(db_path)
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return
+
+    if df.empty:
+        print("No data found for the specified criteria.")
+        return
+
+    print(f"Aggregating statistics for {df['json_filename'].nunique()} source files...")
+
+    # *** NEW: Define percentiles and create custom aggregators ***
+    percentiles_to_check = [10, 20, 30, 40, 50, 60, 70, 80, 90]
+    
+    # Create a dictionary of aggregation functions
+    agg_funcs = {
+        'tile_count': 'count',
+        f'mean_{column_name}': 'mean',
+        f'std_dev_{column_name}': 'std',
+        f'min_{column_name}': 'min',
+        f'max_{column_name}': 'max'
+    }
+    
+    # Add percentile calculations to the dictionary
+    for p in percentiles_to_check:
+        # Define a lambda function to calculate the p-th percentile (quantile)
+        # Note: quantile function takes values between 0 and 1
+        agg_funcs[f'p{p}_{column_name}'] = lambda x, p=p: x.quantile(p / 100.0)
+
+    # Group by filename and apply all aggregation functions at once
+    summary_df = df.groupby('json_filename')[column_name].agg(**agg_funcs).reset_index()
+
+    # Sort by the median (p50) value by default
+    summary_df = summary_df.sort_values(by=f'p50_{column_name}', ascending=False)
+    
+    output_path = os.path.join(output_dir, f"{column_name}_summary_by_source.csv")
+    summary_df.to_csv(output_path, index=False)
+    
+    print(f"🎉 Summary CSV with percentiles saved successfully to: {output_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -248,24 +389,49 @@ Examples:
                         help='Maximum value for the zoomed histogram range (inclusive).')
 
 
+    # NEW: Add an argument to trigger the comparison
+    parser.add_argument('--compare-sources', action='store_true',
+                        help='Compare metric distribution across different source files.')
+
+    # Add a new argument for exporting CSV
+    parser.add_argument('--export-csv', action='store_true',
+                        help='Export a CSV summary of the metric grouped by source file.')
+
     args = parser.parse_args()
 
-    # Determine filter values based on precedence
+    # Determine filter values (your existing logic)
     final_min_filter_value = None
     if args.min_filter_value is not None:
         final_min_filter_value = args.min_filter_value
     elif args.filter_zeros:
-        # A very small non-zero value to effectively filter zeros due to float precision
-        # This acts as a soft lower bound when --filter-zeros is used.
-        final_min_filter_value = 1e-9 
+        final_min_filter_value = 1e-9
 
-    analyze_metric_from_db(
-        db_path=args.db_path,
-        column_name=args.column_name,
-        output_dir=args.output_dir,
-        filter_zeros=args.filter_zeros, # Pass this as a flag, though min_filter_value takes precedence
-        min_filter_value=final_min_filter_value, # Use the determined filter value
-        max_filter_value=args.max_filter_value,
-        min_threshold_for_analysis=args.min_threshold_for_analysis,
-        max_threshold_for_analysis=args.max_threshold_for_analysis
-    )
+    # Call the correct function based on the flag
+    if args.export_csv:
+        export_summary_to_csv(
+            db_path=args.db_path,
+            column_name=args.column_name,
+            output_dir=args.output_dir,
+            min_filter_value=final_min_filter_value,
+            max_filter_value=args.max_filter_value
+        )
+    elif args.compare_sources:
+        compare_metric_by_source(
+            db_path=args.db_path,
+            column_name=args.column_name,
+            output_dir=args.output_dir,
+            min_filter_value=final_min_filter_value,
+            max_filter_value=args.max_filter_value
+        )
+    else:
+        # Call your original analysis function
+        analyze_metric_from_db(
+            db_path=args.db_path,
+            column_name=args.column_name,
+            output_dir=args.output_dir,
+            filter_zeros=args.filter_zeros,
+            min_filter_value=final_min_filter_value,
+            max_filter_value=args.max_filter_value,
+            min_threshold_for_analysis=args.min_threshold_for_analysis,
+            max_threshold_for_analysis=args.max_threshold_for_analysis
+        )

@@ -180,116 +180,7 @@ def get_tile_details(json_filename: str, col: int, row: int) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
     finally:
         conn.close()
-
-# ... (rest of your backend/main.py file) ...
-@app.post("/api/ingest")
-async def start_ingestion(request: Request, ingestion_request: IngestionRequest):
-    """
-    Starts an ingestion process and streams logs back to the client.
-    """
-    async def log_generator():
-        """A generator function that yields log messages."""
-        folder_path = ingestion_request.folder_path
-        yield f"data: Starting ingestion for folder: {folder_path}\n\n"
-        await asyncio.sleep(0.1)
-
-        if not os.path.isdir(folder_path):
-            yield f"data: ERROR: Folder not found.\n\n"
-            return
-
-        try:
-            file_pattern = r'.*\.json'
-            filename_re = re.compile(file_pattern)
-            all_files_in_dir = os.listdir(folder_path)
-            json_files = [os.path.join(folder_path, f) for f in all_files_in_dir if filename_re.fullmatch(f)]
-        except Exception as e:
-            yield f"data: ERROR: Could not read folder contents: {e}\n\n"
-            return
-            
-        if not json_files:
-            yield f"data: No new JSON files found to process.\n\n"
-            return
-
-        yield f"data: Found {len(json_files)} JSON files to process.\n\n"
-        await asyncio.sleep(0.1)
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        for file_path in json_files:
-            filename = os.path.basename(file_path)
-            
-            # Idempotency Check
-            cursor.execute("SELECT id FROM SourceFiles WHERE json_filename = ?", (filename,))
-            if cursor.fetchone():
-                yield f"data: Skipping '{filename}', already ingested.\n\n"
-                await asyncio.sleep(0.1)
-                continue
-
-            yield f"data: Processing '{filename}'...\n\n"
-            await asyncio.sleep(0.1)
-
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-
-                # Insert into SourceFiles
-                image_directory = data.get("image_directory", "")
-                ingested_at_str = datetime.now().isoformat()
-                cursor.execute(
-                    "INSERT INTO SourceFiles (json_filename, image_directory, ingested_at) VALUES (?, ?, ?)",
-                    (filename, image_directory, ingested_at_str)
-                )
-                source_file_id = cursor.lastrowid
-
-                # Insert tiles
-                tiles = data.get("tiles", {})
-                tile_count = 0
-                for tile_name, attributes in tiles.items():
-                    if not isinstance(attributes, dict): continue
-                    tile_values = (
-                        source_file_id, 
-                        tile_name, 
-                        attributes.get('status'), 
-                        attributes.get('col'),
-                        attributes.get('row'), 
-                        attributes.get('size'), 
-                        attributes.get('laplacian'),
-                        attributes.get('avg_brightness'), 
-                        attributes.get('avg_saturation'),
-                        attributes.get('entropy'), 
-                        attributes.get('edge_density'),
-                        attributes.get('edge_density_3060'), # Add the new value
-                        attributes.get('foreground_ratio'),
-                        attributes.get('max_subject_area') 
-                    )
-                    cursor.execute(
-                        '''INSERT INTO ImageTiles (source_file_id, webp_filename, status, col, row, size, 
-                                                  laplacian, avg_brightness, avg_saturation, entropy, edge_density, edge_density_3060, foreground_ratio, max_subject_area)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                        tile_values
-                    )
-                    tile_count += 1
-                
-                conn.commit()
-                yield f"data: SUCCESS: Ingested '{filename}' with {tile_count} tiles.\n\n"
-                clear_dashboard_caches() # NEW: Clear cache after successful ingestion
-                await asyncio.sleep(0.1)
-
-            except Exception as e:
-                yield f"data: ERROR: Failed to process '{filename}': {e}\n\n"
-                await asyncio.sleep(0.1)
-                conn.rollback()
-
-        conn.close()
-        yield f"data: Ingestion process complete.\n\n"
-        clear_dashboard_caches() # NEW: Clear cache after successful ingestion
-
-
-    return EventSourceResponse(log_generator())
     
-# --- (Your other endpoints: /images, /api/stats, etc. remain unchanged) ---
-
 @app.get("/images/{source_id}/{webp_filename}")
 def get_image(source_id: int, webp_filename: str):
     """
@@ -479,118 +370,121 @@ def get_aggregate_heatmap_rules(rule_name: str) -> Dict[str, Any]:
 # NEW: In-memory cache for per-image rule reports
 _per_image_rule_report_cache = {}
 
-# NEW: Endpoint to get per-image rule match statistics
+# In main.py
+
+# --- ACTION: Replace the entire "get_per_image_rule_report" function with this ---
+
 @app.get("/api/stats/per_image_rule_report/{rule_name}")
 def get_per_image_rule_report(rule_name: str) -> Dict[str, Any]:
     """
-    Generates a report showing rule match statistics (counts and percentages)
-    for each individual JSON file based on a specified rule set.
+    Generates a report with correct, non-overlapping rule counts by replicating
+    prioritized rule logic directly in the database. (Version 4 - Correct Logic)
     """
-    # Check cache first
     if rule_name in _per_image_rule_report_cache:
         print(f"Serving per-image rule report for '{rule_name}' from cache.")
         return _per_image_rule_report_cache[rule_name]
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    report_data = []
-    
     try:
-        # Load the rules_config using the existing load_heatmap_rule logic
         rules_config_model = load_heatmap_rule(rule_name)
-        rules_config = rules_config_model.dict() # Convert Pydantic model back to dict for processing
+    except HTTPException:
+        raise
 
-        # Get ALL SourceFiles
-        cursor.execute("SELECT id, json_filename FROM SourceFiles")
-        source_files = [dict(row) for row in cursor.fetchall()]
+    rules_config = rules_config_model.dict()
+    
+    VALID_COLUMNS = {
+        "status", "col", "row", "size", "laplacian", "avg_brightness",
+        "avg_saturation", "entropy", "edge_density", "edge_density_3060",
+        "foreground_ratio", "max_subject_area"
+    }
 
-        if not source_files:
-            result = {"report_data": [], "rules_config": rules_config}
-            _per_image_rule_report_cache[rule_name] = result
-            return result
+    # --- FIX: Build a single, prioritized CASE statement ---
+    when_clauses = []
+    for i, rule in enumerate(rules_config['rules']):
+        conditions = []
+        for cond in rule['rule_group']['conditions']:
+            if cond['key'] in VALID_COLUMNS and cond['op'] in {'>', '<', '>=', '<=', '==', '!='}:
+                value = cond['value']
+                sql_value = f"'{value}'" if isinstance(value, str) else value
+                conditions.append(f"(T.{cond['key']} {cond['op']} {sql_value})")
 
-        # Dictionary of operators for easy lookup (copied from generate_heatmap)
-        ops = {'>': (lambda a, b: a > b), '<': (lambda a, b: a < b), '>=': (lambda a, b: a >= b),
-               '<=': (lambda a, b: a <= b), '==': (lambda a, b: a == b), '!=': (lambda a, b: a != b)}
+        if conditions:
+            logical_op = " AND " if rule['rule_group']['logical_op'].upper() == "AND" else " OR "
+            full_condition = logical_op.join(conditions)
+            # This creates "WHEN (condition) THEN 'rule_0'"
+            when_clauses.append(f"WHEN {full_condition} THEN '{i}'")
 
-        # Iterate through each source file to process its tiles
-        for source_file in source_files:
-            file_id = source_file['id']
-            json_filename = source_file['json_filename']
+    # The final CASE statement finds the first matching rule for each tile
+    if when_clauses:
+        case_statement = f"CASE {' '.join(when_clauses)} ELSE 'default' END"
+    else:
+        # If no rules are valid, every tile is 'default'
+        case_statement = "'default'"
 
-            # Get tiles for the CURRENT SourceFile only
-            cursor.execute("SELECT T.* FROM ImageTiles T WHERE T.source_file_id = ?", (file_id,))
-            tiles_for_file = [dict(row) for row in cursor.fetchall()]
+    query = f"""
+        SELECT
+            S.json_filename,
+            {case_statement} AS matched_rule_index,
+            COUNT(T.id) as count
+        FROM ImageTiles T
+        JOIN SourceFiles S ON T.source_file_id = S.id
+        GROUP BY S.json_filename, matched_rule_index
+        ORDER BY S.json_filename;
+    """
 
-            if not tiles_for_file:
-                # Add an entry for files with no tiles, but specify 0 counts
-                report_data.append({
-                    "json_filename": json_filename,
-                    "total_tiles_evaluated_for_file": 0,
-                    "rule_match_details": [] # Empty details as no tiles
-                })
-                continue
+    conn = get_db_connection()
+    try:
+        results = conn.execute(query).fetchall()
+        
+        # --- FIX: Process the new query result format ---
+        # The results are now pre-grouped by the database, e.g., ('file1.json', 'rule_0', 50)
+        
+        # Intermediate structure to hold aggregated data
+        report_agg = {}
 
-            # Initialize rule match counters for THIS file
-            file_rule_match_counts = {str(i): 0 for i in range(len(rules_config['rules']))}
-            file_rule_match_counts['default'] = 0
+        # Get total tile counts for each file first
+        total_counts = {}
+        for row in conn.execute("SELECT S.json_filename, COUNT(T.id) FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id GROUP BY S.json_filename"):
+            total_counts[row['json_filename']] = row[1]
 
-            # Process tiles for THIS file against the rules
-            for tile in tiles_for_file:
-                matched_by_rule = False
-                for i, rule in enumerate(rules_config['rules']):
-                    is_match = evaluate_rule_group(tile, RuleGroup(**rule['rule_group']), ops)
-                    if is_match:
-                        file_rule_match_counts[str(i)] += 1
-                        matched_by_rule = True
-                        break
-                
-                if not matched_by_rule:
-                    file_rule_match_counts['default'] += 1
+        # Initialize report for all files, even those with no matches
+        for filename in total_counts.keys():
+            report_agg[filename] = {str(i): 0 for i in range(len(rules_config['rules']))}
+            report_agg[filename]['default'] = 0
 
-            # Calculate percentages for THIS file
-            total_tiles_for_file = len(tiles_for_file)
-            rule_match_details = []
+        # Populate the aggregation with actual counts from the database
+        for row in results:
+            filename = row['json_filename']
+            rule_index = str(row['matched_rule_index'])
+            count = row['count']
+            if filename in report_agg:
+                report_agg[filename][rule_index] = count
+        
+        # Now, format the aggregated data into the final JSON structure
+        report_data = []
+        for filename, counts in report_agg.items():
+            total_tiles = total_counts.get(filename, 0)
             
-            # Default category details
-            default_count = file_rule_match_counts['default']
-            default_percentage = (default_count / total_tiles_for_file) * 100
-            rule_match_details.append({
-                "rule_index": "default",
-                "count": default_count,
-                "percentage": default_percentage
-            })
+            # Calculate the default count correctly
+            matched_sum = sum(v for k, v in counts.items() if k != 'default')
+            counts['default'] = total_tiles - matched_sum
 
-            # Rule-specific details
-            for i, rule_def in enumerate(rules_config['rules']):
-                rule_count = file_rule_match_counts[str(i)]
-                rule_percentage = (rule_count / total_tiles_for_file) * 100
-                rule_match_details.append({
-                    "rule_index": str(i),
-                    "count": rule_count,
-                    "percentage": rule_percentage
-                })
+            rule_details = []
+            for rule_index, count in counts.items():
+                percentage = (count / total_tiles * 100) if total_tiles > 0 else 0
+                rule_details.append({"rule_index": rule_index, "count": count, "percentage": percentage})
 
             report_data.append({
-                "json_filename": json_filename,
-                "total_tiles_evaluated_for_file": total_tiles_for_file,
-                "rule_match_details": rule_match_details
+                "json_filename": filename,
+                "total_tiles_evaluated_for_file": total_tiles,
+                "rule_match_details": sorted(rule_details, key=lambda x: str(x['rule_index'])) # Sort for consistent order
             })
         
-        result = {
-            "report_data": report_data,
-            "rules_config": rules_config # Include the rules config for frontend display
-        }
+        final_result = {"report_data": sorted(report_data, key=lambda x: x['json_filename']), "rules_config": rules_config}
+        _per_image_rule_report_cache[rule_name] = final_result
+        return final_result
 
-        _per_image_rule_report_cache[rule_name] = result # Store in cache
-        print(f"Calculated and cached per-image rule report for '{rule_name}'.")
-        return result
-
-    except HTTPException:
-        raise # Re-raise if load_heatmap_rule already raised it
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate per-image rule report: {e}")
+    except sqlite3.OperationalError as e:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
     finally:
         conn.close()
 
