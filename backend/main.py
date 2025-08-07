@@ -1,19 +1,25 @@
 # backend/main.py
 
-import sqlite3
-from fastapi import FastAPI, Request, HTTPException # <--- ADD HTTPException here
-from fastapi.responses import FileResponse
-from sse_starlette.sse import EventSourceResponse
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-import numpy as np
-from typing import List, Optional, Any, Dict
-from pydantic import BaseModel
+# --- Standard Library Imports ---
 import asyncio
-import re
-from datetime import datetime
+import json
 import os
-import json # <-- ENSURE THIS LINE IS PRESENT
+import re
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# --- Third-Party Imports ---
+import numpy as np
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+
+# --- Local Application Imports ---
+from lib.reporting import HeatmapRulesConfig, generate_report_data
 
 # --- Configuration ---
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -312,7 +318,7 @@ def get_aggregate_heatmap_rules(rule_name: str) -> Dict[str, Any]:
 
     try:
         rules_config_model = load_heatmap_rule(rule_name)
-        rules_config = rules_config_model.dict() 
+        rules_config = rules_config_model.model_dump() 
 
         # Get ALL tiles from the database
         query = "SELECT T.* FROM ImageTiles T"
@@ -372,122 +378,38 @@ _per_image_rule_report_cache = {}
 
 # In main.py
 
-# --- ACTION: Replace the entire "get_per_image_rule_report" function with this ---
-
+# --- ACTION: Replace your old function with this simplified version ---
 @app.get("/api/stats/per_image_rule_report/{rule_name}")
 def get_per_image_rule_report(rule_name: str) -> Dict[str, Any]:
     """
-    Generates a report with correct, non-overlapping rule counts by replicating
-    prioritized rule logic directly in the database. (Version 4 - Correct Logic)
+    Web API endpoint that gets report data by calling the shared library.
+    This function's main jobs are now caching and web formatting.
     """
     if rule_name in _per_image_rule_report_cache:
         print(f"Serving per-image rule report for '{rule_name}' from cache.")
         return _per_image_rule_report_cache[rule_name]
 
     try:
+        # load_heatmap_rule still loads the file and returns a Pydantic model
         rules_config_model = load_heatmap_rule(rule_name)
     except HTTPException:
         raise
 
-    rules_config = rules_config_model.dict()
-    
-    VALID_COLUMNS = {
-        "status", "col", "row", "size", "laplacian", "avg_brightness",
-        "avg_saturation", "entropy", "edge_density", "edge_density_3060",
-        "foreground_ratio", "max_subject_area"
-    }
-
-    # --- FIX: Build a single, prioritized CASE statement ---
-    when_clauses = []
-    for i, rule in enumerate(rules_config['rules']):
-        conditions = []
-        for cond in rule['rule_group']['conditions']:
-            if cond['key'] in VALID_COLUMNS and cond['op'] in {'>', '<', '>=', '<=', '==', '!='}:
-                value = cond['value']
-                sql_value = f"'{value}'" if isinstance(value, str) else value
-                conditions.append(f"(T.{cond['key']} {cond['op']} {sql_value})")
-
-        if conditions:
-            logical_op = " AND " if rule['rule_group']['logical_op'].upper() == "AND" else " OR "
-            full_condition = logical_op.join(conditions)
-            # This creates "WHEN (condition) THEN 'rule_0'"
-            when_clauses.append(f"WHEN {full_condition} THEN '{i}'")
-
-    # The final CASE statement finds the first matching rule for each tile
-    if when_clauses:
-        case_statement = f"CASE {' '.join(when_clauses)} ELSE 'default' END"
-    else:
-        # If no rules are valid, every tile is 'default'
-        case_statement = "'default'"
-
-    query = f"""
-        SELECT
-            S.json_filename,
-            {case_statement} AS matched_rule_index,
-            COUNT(T.id) as count
-        FROM ImageTiles T
-        JOIN SourceFiles S ON T.source_file_id = S.id
-        GROUP BY S.json_filename, matched_rule_index
-        ORDER BY S.json_filename;
-    """
-
+    rules_config = rules_config_model.model_dump()
     conn = get_db_connection()
+
     try:
-        results = conn.execute(query).fetchall()
+        # --- CALL THE SHARED LOGIC ---
+        report_data = generate_report_data(conn, rules_config)
         
-        # --- FIX: Process the new query result format ---
-        # The results are now pre-grouped by the database, e.g., ('file1.json', 'rule_0', 50)
-        
-        # Intermediate structure to hold aggregated data
-        report_agg = {}
+        # The data is already processed; we just need to add the rules_config for the frontend
+        final_result = {"report_data": report_data, "rules_config": rules_config}
 
-        # Get total tile counts for each file first
-        total_counts = {}
-        for row in conn.execute("SELECT S.json_filename, COUNT(T.id) FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id GROUP BY S.json_filename"):
-            total_counts[row['json_filename']] = row[1]
-
-        # Initialize report for all files, even those with no matches
-        for filename in total_counts.keys():
-            report_agg[filename] = {str(i): 0 for i in range(len(rules_config['rules']))}
-            report_agg[filename]['default'] = 0
-
-        # Populate the aggregation with actual counts from the database
-        for row in results:
-            filename = row['json_filename']
-            rule_index = str(row['matched_rule_index'])
-            count = row['count']
-            if filename in report_agg:
-                report_agg[filename][rule_index] = count
-        
-        # Now, format the aggregated data into the final JSON structure
-        report_data = []
-        for filename, counts in report_agg.items():
-            total_tiles = total_counts.get(filename, 0)
-            
-            # Calculate the default count correctly
-            matched_sum = sum(v for k, v in counts.items() if k != 'default')
-            counts['default'] = total_tiles - matched_sum
-
-            rule_details = []
-            for rule_index, count in counts.items():
-                percentage = (count / total_tiles * 100) if total_tiles > 0 else 0
-                rule_details.append({"rule_index": rule_index, "count": count, "percentage": percentage})
-
-            report_data.append({
-                "json_filename": filename,
-                "total_tiles_evaluated_for_file": total_tiles,
-                "rule_match_details": sorted(rule_details, key=lambda x: str(x['rule_index'])) # Sort for consistent order
-            })
-        
-        final_result = {"report_data": sorted(report_data, key=lambda x: x['json_filename']), "rules_config": rules_config}
         _per_image_rule_report_cache[rule_name] = final_result
         return final_result
-
-    except sqlite3.OperationalError as e:
-        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
     finally:
         conn.close()
-
+        
 # backend/main.py
 
 # ... (existing cache variables, e.g., _distribution_cache, _aggregate_rules_cache) ...
@@ -612,7 +534,7 @@ def save_heatmap_rules(request: SaveRulesRequest):
 
     try:
         with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(request.rules_config.dict(), f, indent=2) # Use .dict() to convert Pydantic model to dict #
+            json.dump(request.rules_config.model_dump(), f, indent=2) # Use .model_dump() to convert Pydantic model to dict #
         clear_dashboard_caches() # NEW: Clear cache after saving/modifying a rule
         return {"message": f"Rule set '{request.rule_name}' saved successfully."}
     except Exception as e:
