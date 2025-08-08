@@ -1,4 +1,5 @@
 // frontend/main.js
+console.log("main.js script loaded."); // <-- ADD THIS LINE
 
 // --- State Management ---
 let currentPage = 1;
@@ -9,6 +10,8 @@ let currentRequestState = {
     limit: 100
 };
 let currentResultsData = [];
+let EXPORT_CSV_LIMIT = 50000; // Default fallback
+
 const ALL_COLUMNS = [
     { key: 'id', label: 'ID' },
     { key: 'json_filename', label: 'JSON Filename' },
@@ -29,21 +32,27 @@ const ALL_COLUMNS = [
 
 // --- Main Setup ---
 window.onload = function() {
+	console.log("window.onload is executing."); // <-- ADD THIS LINE
     setupEventListeners();
     populateDisplayOptions();
     addFilterRow();
-	fetchSourceFiles(); // NEW: Fetch filenames for the dropdown
+	fetchSourceFiles(); 
+	fetchExportLimits(); // Add this line
     fetchAndDisplayTiles();
 };
 
-
-function setupEventListeners() {
-    // ... (This function remains the same as before) ...
-    document.getElementById('filter-form').addEventListener('submit', handleFilterSubmit);
-    document.getElementById('add-filter-btn').addEventListener('click', addFilterRow);
-    // ... etc.
+// --- NEW Function to fetch export limits from backend ---
+async function fetchExportLimits() {
+    try {
+        const response = await fetch('/api/export/limits');
+        if (!response.ok) throw new Error('Failed to fetch export limits.');
+        const limits = await response.json();
+        EXPORT_CSV_LIMIT = limits.export_csv_limit;
+    } catch (error) {
+        console.error("Error fetching export limits:", error);
+        // The default limit will be used as a fallback
+    }
 }
-
 
 // --- NEW: Function to fetch filenames and populate the dropdown ---
 async function fetchSourceFiles() {
@@ -105,21 +114,25 @@ function handleFilterSubmit(event) {
     fetchAndDisplayTiles();
 }
 
-
 function setupEventListeners() {
+    // --- Listeners from the first original function ---
     document.getElementById('filter-form').addEventListener('submit', handleFilterSubmit);
     document.getElementById('add-filter-btn').addEventListener('click', addFilterRow);
+
+    // --- Listeners from the second original function ---
     document.getElementById('prev-button').addEventListener('click', handlePrevClick);
     document.getElementById('next-button').addEventListener('click', handleNextClick);
     document.getElementById('results-body').addEventListener('click', handleRowClick);
-	document.getElementById('go-to-page-btn').addEventListener('click', handleGoToPage);
+    document.getElementById('go-to-page-btn').addEventListener('click', handleGoToPage);
 
+    // Dynamic filter row removal
     document.getElementById('filter-container').addEventListener('click', function(event) {
         if (event.target.classList.contains('remove-filter-btn')) {
             event.target.parentElement.remove();
         }
     });
 
+    // Display options dropdown
     const displayBtn = document.getElementById('display-options-btn');
     const displayDropdown = document.getElementById('display-options-dropdown');
     displayBtn.onclick = () => displayDropdown.classList.toggle('show');
@@ -132,7 +145,8 @@ function setupEventListeners() {
             }
         }
     });
-    
+
+    // Modal close button
     const modal = document.getElementById('inspector-modal');
     const closeBtn = document.querySelector('.close-button');
     closeBtn.onclick = () => modal.style.display = "none";
@@ -141,9 +155,12 @@ function setupEventListeners() {
             modal.style.display = "none";
         }
     });
-	
-	// NEW: Add a listener to the table header for sorting
+
+    // Table header for sorting
     document.querySelector('#results-table thead').addEventListener('click', handleSortClick);
+
+    // --- The new event listener for the export button ---
+    document.getElementById('export-csv-btn').addEventListener('click', handleExportCsv);
 }
 
 // --- All Helper Functions ---
@@ -269,11 +286,89 @@ function handleGoToPage() {
     }
 }
 
+// In frontend/main.js
+
+async function handleExportCsv() {
+    console.log("handleExportCsv function called."); // Log: Function starts
+
+    const exportBtn = document.getElementById('export-csv-btn');
+    exportBtn.disabled = true;
+    exportBtn.textContent = 'Exporting...';
+
+    const requestBody = {
+        filters: currentRequestState.filters,
+        sort: currentRequestState.sort
+    };
+
+    console.log("Sending export request to backend with state:", requestBody); // Log: What is being sent
+
+    try {
+        const response = await fetch('/api/export/csv', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        console.log("Received response from backend with status:", response.status); // Log: Backend responded
+
+        if (!response.ok) {
+            // Try to get detailed error message from backend
+            const errorData = await response.json().catch(() => ({ detail: "Unknown server error." }));
+            throw new Error(errorData.detail || `Export failed with status: ${response.status}`);
+        }
+
+        // Create a blob from the response to trigger the download
+        const blob = await response.blob();
+        console.log("CSV data converted to blob with size:", blob.size); // Log: Blob created
+
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+
+        // Get filename from Content-Disposition header
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'tile_export.csv';
+        if (disposition && disposition.includes('attachment')) {
+            const filenameMatch = disposition.match(/filename="(.+?)"/);
+            if (filenameMatch && filenameMatch.length > 1) {
+                filename = filenameMatch[1];
+            }
+        }
+        a.download = filename;
+        console.log("Triggering download for file:", filename); // Log: Download initiated
+
+        document.body.appendChild(a);
+        a.click();
+
+        // Cleanup
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+    } catch (error) {
+        // This will now catch any error from the fetch or blob creation
+        console.error('Error during CSV export:', error);
+        alert(`Failed to export CSV: ${error.message}`);
+    } finally {
+        // Ensure the button is always re-enabled
+        exportBtn.disabled = false;
+        exportBtn.textContent = 'Export to CSV';
+    }
+}
+
+// In tile-analyzer/frontend/main.js
+
 async function fetchAndDisplayTiles() {
     const tableBody = document.getElementById('results-body');
-    tableBody.innerHTML = `<tr><td colspan="12">Loading...</td></tr>`; 
+    const exportBtn = document.getElementById('export-csv-btn');
+    const summaryElement = document.getElementById('results-summary');
+
+    // Reset UI for loading state
+    tableBody.innerHTML = `<tr><td colspan="12">Loading...</td></tr>`;
     document.getElementById('prev-button').disabled = true;
     document.getElementById('next-button').disabled = true;
+    exportBtn.disabled = true;
+    summaryElement.textContent = 'Fetching data...';
 
     currentRequestState.page = currentPage;
 
@@ -283,66 +378,78 @@ async function fetchAndDisplayTiles() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(currentRequestState)
         });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
 
-        currentResultsData = data; 
-        renderTable(currentResultsData);
+        // The logic for the summary message has been REMOVED from here.
+
+        currentResultsData = data;
+        renderTable(currentResultsData); // This function will now handle the summary message.
 
     } catch (error) {
         console.error('Error fetching data:', error);
-        tableBody.innerHTML = '<tr><td colspan="12" style="color: red;">Failed to load data.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="12" style="color: red;">Failed to load data. Check console for details.</td></tr>';
+        summaryElement.textContent = 'Error loading data.';
     }
 }
+
+// In tile-analyzer/frontend/main.js
 
 function renderTable(data) {
     const tableHead = document.querySelector('#results-table thead');
     const tableBody = document.getElementById('results-body');
     const summaryElement = document.getElementById('results-summary');
+    const exportBtn = document.getElementById('export-csv-btn');
     tableBody.innerHTML = '';
 
-    // Step 1: Get the currently active sort from our global state object.
-    // If no sort is active yet, we default to sorting by 'id' ascending.
+    // --- Logic to get visible columns (Restored) ---
+    const visibleColumns = Array.from(document.querySelectorAll('.column-toggle:checked')).map(cb => cb.value);
     const currentSort = currentRequestState.sort[0] || { key: 'id', order: 'asc' };
 
-    // Step 2: Get the list of columns the user wants to see from the checkboxes.
-    const visibleColumns = Array.from(document.querySelectorAll('.column-toggle:checked')).map(cb => cb.value);
-
-    // --- This is the main new logic block ---
-    // Step 3: Build the header HTML string dynamically.
-    let headerHtml = '<tr><th>Thumbnail</th>'; // Start with the non-sortable Thumbnail column.
-
+    // --- Logic to build table header (Restored) ---
+    let headerHtml = '<tr><th>Thumbnail</th>';
     visibleColumns.forEach(key => {
-        // Find the full column object (which has the label) for the current key.
         const column = ALL_COLUMNS.find(c => c.key === key);
-        let sortIndicator = ''; // Default to no arrow.
-
-        // If the current column we are building is the one we are sorting by...
-        if (column.key === currentSort.key) {
-            // ...then add the correct up or down arrow.
-            sortIndicator = currentSort.order === 'asc' ? ' &uarr;' : ' &darr;';
+        if (column) { // Check if column exists to prevent errors
+            let sortIndicator = '';
+            if (column.key === currentSort.key) {
+                sortIndicator = currentSort.order === 'asc' ? ' &uarr;' : ' &darr;';
+            }
+            headerHtml += `<th data-sort-key="${column.key}" style="cursor: pointer;">${column.label}${sortIndicator}</th>`;
         }
-        
-        // Create the full <th> tag with the data-sort-key attribute, the label, and the arrow.
-        headerHtml += `<th data-sort-key="${column.key}" style="cursor: pointer;">${column.label}${sortIndicator}</th>`;
     });
     headerHtml += '</tr>';
-    
-    // Step 4: Set the inner HTML of the table header to our newly created string.
     tableHead.innerHTML = headerHtml;
-    // --- End of the main new logic block ---
+    // --- End of restored logic ---
 
+    // --- Centralized summary and button logic ---
+    if (data.total_results > 0) {
+        if (data.total_results > EXPORT_CSV_LIMIT) {
+            exportBtn.disabled = true;
+            summaryElement.innerHTML = `Found ${data.total_results.toLocaleString()} matching tiles. <strong style="color: red;">Please apply more filters to enable CSV export (limit: ${EXPORT_CSV_LIMIT.toLocaleString()}).</strong>`;
+        } else {
+            exportBtn.disabled = false;
+            summaryElement.textContent = `Found ${data.total_results.toLocaleString()} matching tiles.`;
+        }
+    } else {
+        exportBtn.disabled = true;
+        summaryElement.textContent = 'Found 0 matching tiles.';
+    }
 
+    // --- Logic to build table body ---
     if (data.results && data.results.length > 0) {
-        summaryElement.textContent = `Found ${data.total_results.toLocaleString()} matching tiles.`;
-
-        // The rest of the function for creating the table body and pagination remains the same...
         data.results.forEach(tile => {
             const row = document.createElement('tr');
             row.dataset.tileData = JSON.stringify(tile);
-            
+
+            // Start row with the thumbnail image
             let rowHtml = `<td><img src="/images/${tile.source_file_id}/${tile.webp_filename}" class="results-thumbnail" loading="lazy"></td>`;
 
+            // Add the other visible columns (This will now work correctly)
             visibleColumns.forEach(key => {
                 let value = tile[key];
                 if (value == null) {
@@ -352,17 +459,19 @@ function renderTable(data) {
                 }
                 rowHtml += `<td>${value}</td>`;
             });
+
             row.innerHTML = rowHtml;
             tableBody.appendChild(row);
         });
 
+        // --- Pagination Logic ---
         const totalPages = Math.ceil(data.total_results / data.limit);
         document.getElementById('page-info').textContent = `Page ${data.page} of ${totalPages}`;
         document.getElementById('prev-button').disabled = data.page <= 1;
         document.getElementById('next-button').disabled = data.page >= totalPages;
+
     } else {
-        summaryElement.textContent = 'Found 0 matching tiles.';
-        const columnCount = document.querySelectorAll('.column-toggle:checked').length + 1;
+        const columnCount = visibleColumns.length + 1;
         tableBody.innerHTML = `<tr><td colspan="${columnCount}">No results found.</td></tr>`;
         document.getElementById('page-info').textContent = 'Page 1 of 1';
     }

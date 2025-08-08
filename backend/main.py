@@ -2,6 +2,8 @@
 
 # --- Standard Library Imports ---
 import asyncio
+import configparser # Add this import
+import io # Add this import
 import json
 import os
 import re
@@ -12,8 +14,9 @@ from typing import Any, Dict, List, Optional
 
 # --- Third-Party Imports ---
 import numpy as np
+import pandas as pd # Add this import
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse # Modified import
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -24,6 +27,13 @@ from lib.reporting import HeatmapRulesConfig, generate_report_data
 # --- Configuration ---
 SCRIPT_DIR = Path(__file__).resolve().parent
 DB_PATH = SCRIPT_DIR.parent / "database" / "analysis.db"
+SAVED_RULES_DIR = SCRIPT_DIR.parent / "config" / "saved_rules"
+CONFIG_PATH = SCRIPT_DIR.parent / "config" / "settings.ini" # Add this line
+
+# --- NEW: Load Configuration ---
+config = configparser.ConfigParser()
+config.read(CONFIG_PATH)
+EXPORT_CSV_LIMIT = config.getint('limits', 'export_csv_limit', fallback=50000)
 
 # NEW: Directory for saved heatmap rules
 SAVED_RULES_DIR = SCRIPT_DIR.parent / "config" / "saved_rules" #
@@ -609,6 +619,89 @@ def evaluate_rule_group(tile: Dict, group: RuleGroup, ops: Dict) -> bool:
         return any(results)
     return False
 
+# --- NEW: Endpoint to get export limits ---
+@app.get("/api/export/limits")
+def get_export_limits():
+    """Returns the configured export limits to the frontend."""
+    return {
+        "export_csv_limit": EXPORT_CSV_LIMIT,
+        # We'll add the image download limit here in the next phase
+    }
+
+# --- NEW: Endpoint for CSV Export ---
+@app.post("/api/export/csv")
+def export_tiles_to_csv(request: TilesRequest) -> StreamingResponse:
+    """Exports filtered tile data to a CSV file."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    base_query = "SELECT T.*, S.json_filename FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
+    count_query = "SELECT COUNT(T.id) FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
+    
+    where_clauses = []
+    params = []
+
+    if request.filters:
+        for f in request.filters:
+            valid_operators = {">", "<", ">=", "<=", "==", "!="}
+            if f.op in valid_operators:
+                prefix = "S" if f.key == "json_filename" else "T"
+                where_clauses.append(f"{prefix}.{f.key} {f.op} ?")
+                params.append(f.value)
+
+    order_by_parts = []
+    if request.sort:
+        for s in request.sort:
+            order = s.order.upper() if s.order.lower() in ['asc', 'desc'] else 'ASC'
+            prefix = "S" if s.key == "json_filename" else "T"
+            order_by_parts.append(f"{prefix}.{s.key} {order}")
+    
+    order_by_clause = "ORDER BY " + ", ".join(order_by_parts) if order_by_parts else "ORDER BY T.id ASC"
+
+    # Check total results against the limit BEFORE fetching all data
+    final_count_query = count_query
+    if where_clauses:
+        final_count_query += f" WHERE {' AND '.join(where_clauses)}"
+    
+    try:
+        cursor.execute(final_count_query, params)
+        total_results = cursor.fetchone()[0]
+
+        if total_results > EXPORT_CSV_LIMIT:
+            raise HTTPException(
+                status_code=413, # Payload Too Large
+                detail=f"Export failed: Query returns {total_results} records, which exceeds the limit of {EXPORT_CSV_LIMIT}."
+            )
+
+        # Construct the final query to fetch all matching data (no pagination)
+        final_query = base_query
+        if where_clauses:
+            final_query += f" WHERE {' AND '.join(where_clauses)}"
+        final_query += f" {order_by_clause}"
+
+        # Use pandas to read directly from the database connection
+        df = pd.read_sql_query(final_query, conn, params=params)
+        
+        # Create a string buffer to hold the CSV data
+        stream = io.StringIO()
+        df.to_csv(stream, index=False)
+        
+        # Define the response to stream the CSV file
+        response = StreamingResponse(
+            iter([stream.getvalue()]),
+            media_type="text/csv"
+        )
+        timestamp = datetime.now().strftime("%Y%m%d")
+        response.headers["Content-Disposition"] = f"attachment; filename=tile_export_{timestamp}.csv"
+        
+        return response
+
+    except sqlite3.OperationalError as e:
+        raise HTTPException(status_code=400, detail=f"Database query error: {e}")
+    finally:
+        conn.close()
+
+# ... (the rest of your backend/main.py file) ...
 
 # --- (The app.mount line remains at the very bottom) ---
 # NEW: We need to tell FastAPI it can serve files from the /config directory
