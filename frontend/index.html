@@ -46,6 +46,7 @@
             <br><br>
             <button type="submit">Apply Filters</button>
 			<button type="button" id="export-csv-btn" disabled>Export to CSV</button> 
+			<button type="button" id="download-images-btn" disabled>Download Images</button> </form>
         </form>
     </div>
 
@@ -86,6 +87,26 @@
                     <h3>Metadata</h3>
                     <pre id="inspector-metadata"></pre>
                 </div>
+            </div>
+        </div>
+    </div>
+	
+	<div id="download-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close-button">&times;</span>
+                <h2>Configure Image Download</h2>
+            </div>
+            <div class="modal-body">
+                <label for="filename-template">Filename Template:</label>
+                <input type="text" id="filename-template" value="{json_basename}_{webp_filename}">
+                <div class="template-instructions">
+                    <p>Use placeholders like <strong>{column_name}</strong> to build the filename.</p>
+                    <p>Example: <code>{json_basename}_lap_{laplacian:.2f}_{webp_filename}</code></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="start-download-btn" class="btn-primary">Start Download</button>
             </div>
         </div>
     </div>

@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sqlite3
+import zipfile # Add this import
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,22 +29,18 @@ from lib.reporting import HeatmapRulesConfig, generate_report_data
 SCRIPT_DIR = Path(__file__).resolve().parent
 DB_PATH = SCRIPT_DIR.parent / "database" / "analysis.db"
 SAVED_RULES_DIR = SCRIPT_DIR.parent / "config" / "saved_rules"
-CONFIG_PATH = SCRIPT_DIR.parent / "config" / "settings.ini" # Add this line
+CONFIG_PATH = SCRIPT_DIR.parent / "config" / "settings.ini"
 
-# --- NEW: Load Configuration ---
+# --- Load Configuration (Corrected) ---
+# This block creates the 'config' object and reads the file.
+# It must come before any lines that use the 'config' variable.
 config = configparser.ConfigParser()
 config.read(CONFIG_PATH)
 EXPORT_CSV_LIMIT = config.getint('limits', 'export_csv_limit', fallback=50000)
+DOWNLOAD_IMAGES_LIMIT = config.getint('limits', 'download_images_limit', fallback=5000)
 
-# NEW: Directory for saved heatmap rules
-SAVED_RULES_DIR = SCRIPT_DIR.parent / "config" / "saved_rules" #
-
-# Ensure the directory exists
-SAVED_RULES_DIR.mkdir(parents=True, exist_ok=True) #
-
-# backend/main.py
-
-# ... (existing imports, ensure HTTPException is imported) ...
+# --- Ensure Directories Exist ---
+SAVED_RULES_DIR.mkdir(parents=True, exist_ok=True)
 
 # NEW: In-memory caches for dashboard statistics
 _distribution_cache = {} # <--- ENSURE THIS IS DEFINED GLOBALLY
@@ -78,9 +75,13 @@ class TilesRequest(BaseModel):
     page: int = 1
     limit: int = 50
 
-# --- Add this new Pydantic model with your others ---
 class IngestionRequest(BaseModel):
     folder_path: str
+
+# --- Add this new Pydantic model with your others ---
+class ImageExportRequest(BaseModel):
+    filters: List[Filter]
+    filename_template: str
 
 # --- Helper Functions ---
 def get_db_connection():
@@ -619,13 +620,13 @@ def evaluate_rule_group(tile: Dict, group: RuleGroup, ops: Dict) -> bool:
         return any(results)
     return False
 
-# --- NEW: Endpoint to get export limits ---
+# In /api/export/limits, add the new limit
 @app.get("/api/export/limits")
 def get_export_limits():
     """Returns the configured export limits to the frontend."""
     return {
         "export_csv_limit": EXPORT_CSV_LIMIT,
-        # We'll add the image download limit here in the next phase
+        "download_images_limit": DOWNLOAD_IMAGES_LIMIT, # Add this line
     }
 
 # --- NEW: Endpoint for CSV Export ---
@@ -701,7 +702,103 @@ def export_tiles_to_csv(request: TilesRequest) -> StreamingResponse:
     finally:
         conn.close()
 
-# ... (the rest of your backend/main.py file) ...
+# --- NEW: Endpoint for Image Batch Download ---
+@app.post("/api/export/images")
+def export_images_as_zip(request: ImageExportRequest):
+    """
+    Finds images based on filters, renames them based on a template,
+    and returns them as a downloadable zip archive.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Base query needs all potential template keys + file location info
+    base_query = "SELECT T.*, S.json_filename, S.image_directory FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
+    count_query = "SELECT COUNT(T.id) FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
+    
+    where_clauses = []
+    params = []
+
+    if request.filters:
+        for f in request.filters:
+            valid_operators = {">", "<", ">=", "<=", "==", "!="}
+            if f.op in valid_operators:
+                prefix = "S" if f.key == "json_filename" else "T"
+                where_clauses.append(f"{prefix}.{f.key} {f.op} ?")
+                params.append(f.value)
+    
+    final_count_query = count_query
+    if where_clauses:
+        final_count_query += f" WHERE {' AND '.join(where_clauses)}"
+        
+    try:
+        cursor.execute(final_count_query, params)
+        total_results = cursor.fetchone()[0]
+
+        if total_results > DOWNLOAD_IMAGES_LIMIT:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Download failed: Query returns {total_results} images, which exceeds the limit of {DOWNLOAD_IMAGES_LIMIT}."
+            )
+        if total_results == 0:
+            raise HTTPException(status_code=404, detail="No images found matching the specified criteria.")
+
+        # Fetch all matching tile data
+        final_query = base_query
+        if where_clauses:
+            final_query += f" WHERE {' AND '.join(where_clauses)}"
+        
+        cursor.execute(final_query, params)
+        tiles_to_zip = [dict(row) for row in cursor.fetchall()]
+
+        # Create zip file in memory
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            for tile in tiles_to_zip:
+                # Add json_basename to tile data for the template
+                tile['json_basename'] = Path(tile['json_filename']).stem
+                
+                # --- ROBUST FILENAME FORMATTING LOGIC ---
+                new_filename = request.filename_template
+                # Find all placeholders like {key} or {key:.2f}
+                for placeholder in re.finditer(r"\{(.+?)\}", new_filename):
+                    full_match = placeholder.group(0) # e.g., "{laplacian:.2f}"
+                    key_part = placeholder.group(1) # e.g., "laplacian:.2f"
+                    
+                    # Split key from format specifier
+                    key_name = key_part.split(':')[0]
+                    
+                    if key_name in tile and tile[key_name] is not None:
+                        try:
+                            # Format the value using the full placeholder
+                            formatted_value = f"{tile[key_name]:{key_part.split(':', 1)[1]}}" if ':' in key_part else str(tile[key_name])
+                            new_filename = new_filename.replace(full_match, formatted_value)
+                        except (ValueError, TypeError):
+                            # If formatting fails, leave placeholder as is
+                            pass 
+                # --- END OF ROBUST FORMATTING ---
+
+                # Find the original image file path
+                image_path = Path(tile["image_directory"]) / tile["webp_filename"]
+                if image_path.is_file():
+                    zip_file.write(image_path, arcname=new_filename)
+
+        # Prepare the streaming response
+        zip_buffer.seek(0)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"image_dataset_{timestamp}.zip"
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/x-zip-compressed",
+            headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
+        )
+
+    except sqlite3.OperationalError as e:
+        raise HTTPException(status_code=400, detail=f"Database query error: {e}")
+    finally:
+        conn.close()
+
 
 # --- (The app.mount line remains at the very bottom) ---
 # NEW: We need to tell FastAPI it can serve files from the /config directory

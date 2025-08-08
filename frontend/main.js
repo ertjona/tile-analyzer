@@ -11,6 +11,7 @@ let currentRequestState = {
 };
 let currentResultsData = [];
 let EXPORT_CSV_LIMIT = 50000; // Default fallback
+let DOWNLOAD_IMAGES_LIMIT = 5000; // Add this line
 
 const ALL_COLUMNS = [
     { key: 'id', label: 'ID' },
@@ -48,6 +49,7 @@ async function fetchExportLimits() {
         if (!response.ok) throw new Error('Failed to fetch export limits.');
         const limits = await response.json();
         EXPORT_CSV_LIMIT = limits.export_csv_limit;
+		DOWNLOAD_IMAGES_LIMIT = limits.download_images_limit; // Add this line
     } catch (error) {
         console.error("Error fetching export limits:", error);
         // The default limit will be used as a fallback
@@ -161,6 +163,15 @@ function setupEventListeners() {
 
     // --- The new event listener for the export button ---
     document.getElementById('export-csv-btn').addEventListener('click', handleExportCsv);
+	
+	document.getElementById('download-images-btn').addEventListener('click', () => {
+        document.getElementById('download-modal').style.display = 'block';
+    });
+    document.querySelector('#download-modal .close-button').addEventListener('click', () => {
+        document.getElementById('download-modal').style.display = 'none';
+    });
+    document.getElementById('start-download-btn').addEventListener('click', handleImageDownload);
+
 }
 
 // --- All Helper Functions ---
@@ -356,11 +367,66 @@ async function handleExportCsv() {
     }
 }
 
-// In tile-analyzer/frontend/main.js
+// --- NEW Function to handle the Image Download ---
+async function handleImageDownload() {
+    const downloadBtn = document.getElementById('start-download-btn');
+    const modal = document.getElementById('download-modal');
+    
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = 'Preparing...';
+
+    const requestBody = {
+        filters: currentRequestState.filters,
+        filename_template: document.getElementById('filename-template').value
+    };
+
+    try {
+        const response = await fetch('/api/export/images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || `Download failed: ${response.statusText}`);
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'image_dataset.zip';
+        if (disposition && disposition.includes('attachment')) {
+            const filenameMatch = disposition.match(/filename="(.+?)"/);
+            if (filenameMatch && filenameMatch.length > 1) {
+                filename = filenameMatch[1];
+            }
+        }
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+    } catch (error) {
+        console.error('Error downloading images:', error);
+        alert(`Failed to download images: ${error.message}`);
+    } finally {
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = 'Start Download';
+        modal.style.display = 'none'; // Close modal after attempt
+    }
+}
+
 
 async function fetchAndDisplayTiles() {
     const tableBody = document.getElementById('results-body');
     const exportBtn = document.getElementById('export-csv-btn');
+	const downloadImagesBtn = document.getElementById('download-images-btn'); // Add this line
     const summaryElement = document.getElementById('results-summary');
 
     // Reset UI for loading state
@@ -385,7 +451,30 @@ async function fetchAndDisplayTiles() {
 
         const data = await response.json();
 
-        // The logic for the summary message has been REMOVED from here.
+        // Update the summary message and button states
+        const totalResults = data.total_results;
+        if (totalResults > 0) {
+            summaryElement.textContent = `Found ${totalResults.toLocaleString()} matching tiles.`;
+            // CSV Button
+            if (totalResults > EXPORT_CSV_LIMIT) {
+                exportBtn.disabled = true;
+                summaryElement.innerHTML += ` <strong style="color: red;">(CSV export disabled, limit: ${EXPORT_CSV_LIMIT.toLocaleString()})</strong>`;
+            } else {
+                exportBtn.disabled = false;
+            }
+            // Image Download Button
+            if (totalResults > DOWNLOAD_IMAGES_LIMIT) {
+                downloadImagesBtn.disabled = true;
+                summaryElement.innerHTML += ` <strong style="color: orange;">(Image download disabled, limit: ${DOWNLOAD_IMAGES_LIMIT.toLocaleString()})</strong>`;
+            } else {
+                downloadImagesBtn.disabled = false;
+            }
+        } else {
+            summaryElement.textContent = 'Found 0 matching tiles.';
+            exportBtn.disabled = true;
+            downloadImagesBtn.disabled = true;
+        }
+
 
         currentResultsData = data;
         renderTable(currentResultsData); // This function will now handle the summary message.
@@ -398,23 +487,20 @@ async function fetchAndDisplayTiles() {
 }
 
 // In tile-analyzer/frontend/main.js
-
 function renderTable(data) {
     const tableHead = document.querySelector('#results-table thead');
     const tableBody = document.getElementById('results-body');
-    const summaryElement = document.getElementById('results-summary');
-    const exportBtn = document.getElementById('export-csv-btn');
+    // The 'summaryElement' and 'exportBtn' are no longer needed here
     tableBody.innerHTML = '';
 
-    // --- Logic to get visible columns (Restored) ---
     const visibleColumns = Array.from(document.querySelectorAll('.column-toggle:checked')).map(cb => cb.value);
     const currentSort = currentRequestState.sort[0] || { key: 'id', order: 'asc' };
 
-    // --- Logic to build table header (Restored) ---
+    // Build the table header
     let headerHtml = '<tr><th>Thumbnail</th>';
     visibleColumns.forEach(key => {
         const column = ALL_COLUMNS.find(c => c.key === key);
-        if (column) { // Check if column exists to prevent errors
+        if (column) {
             let sortIndicator = '';
             if (column.key === currentSort.key) {
                 sortIndicator = currentSort.order === 'asc' ? ' &uarr;' : ' &darr;';
@@ -424,32 +510,17 @@ function renderTable(data) {
     });
     headerHtml += '</tr>';
     tableHead.innerHTML = headerHtml;
-    // --- End of restored logic ---
 
-    // --- Centralized summary and button logic ---
-    if (data.total_results > 0) {
-        if (data.total_results > EXPORT_CSV_LIMIT) {
-            exportBtn.disabled = true;
-            summaryElement.innerHTML = `Found ${data.total_results.toLocaleString()} matching tiles. <strong style="color: red;">Please apply more filters to enable CSV export (limit: ${EXPORT_CSV_LIMIT.toLocaleString()}).</strong>`;
-        } else {
-            exportBtn.disabled = false;
-            summaryElement.textContent = `Found ${data.total_results.toLocaleString()} matching tiles.`;
-        }
-    } else {
-        exportBtn.disabled = true;
-        summaryElement.textContent = 'Found 0 matching tiles.';
-    }
+    // The logic block for setting the summary message has been completely REMOVED from this function.
 
-    // --- Logic to build table body ---
+    // Build the table body
     if (data.results && data.results.length > 0) {
         data.results.forEach(tile => {
             const row = document.createElement('tr');
             row.dataset.tileData = JSON.stringify(tile);
 
-            // Start row with the thumbnail image
             let rowHtml = `<td><img src="/images/${tile.source_file_id}/${tile.webp_filename}" class="results-thumbnail" loading="lazy"></td>`;
 
-            // Add the other visible columns (This will now work correctly)
             visibleColumns.forEach(key => {
                 let value = tile[key];
                 if (value == null) {
@@ -464,7 +535,7 @@ function renderTable(data) {
             tableBody.appendChild(row);
         });
 
-        // --- Pagination Logic ---
+        // Pagination Logic
         const totalPages = Math.ceil(data.total_results / data.limit);
         document.getElementById('page-info').textContent = `Page ${data.page} of ${totalPages}`;
         document.getElementById('prev-button').disabled = data.page <= 1;
