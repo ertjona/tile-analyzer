@@ -28,7 +28,10 @@ const ALL_COLUMNS = [
     { key: 'edge_density', label: 'Edge Density' },
 	{ key: 'edge_density_3060', label: 'Edge Density 3060' },
 	{ key: 'foreground_ratio', label: 'Foreground Ratio' },
-	{ key: 'max_subject_area', label: 'Max Subject Area' }
+	{ key: 'max_subject_area', label: 'Max Subject Area' },
+	// --- ADD THESE TWO LINES ---
+    { key: 'model_score', label: 'Model Score' },
+    { key: 'model_classification', label: 'Model Classification' }
 ];
 
 // --- Main Setup ---
@@ -75,6 +78,8 @@ async function fetchSourceFiles() {
     }
 }
 
+// In the handleFilterSubmit function
+
 function handleFilterSubmit(event) {
     event.preventDefault(); 
     currentPage = 1; 
@@ -84,7 +89,6 @@ function handleFilterSubmit(event) {
     // Check the dedicated filename filter
     const filenameFilter = document.getElementById('filename-filter').value;
     if (filenameFilter) {
-        // MODIFIED: Send a clean key without the 'S.' prefix
         filters.push({ key: 'json_filename', op: '==', value: filenameFilter });
     }
 
@@ -92,22 +96,32 @@ function handleFilterSubmit(event) {
     document.querySelectorAll('.metric-filter-row').forEach(row => {
         const key = row.querySelector('.filter-key').value;
         const op = row.querySelector('.filter-op').value;
-        const value = row.querySelector('.filter-value').value;
+        const rawValue = row.querySelector('.filter-value').value;
 
-        const numericValue = parseFloat(value);
-        if (!isNaN(numericValue)) {
-            // MODIFIED: Send a clean key without the 'T.' prefix
-            filters.push({ key: key, op: op, value: numericValue });
+        if (rawValue.trim() === '') {
+            return; // Skip empty filters
         }
+
+        // --- MODIFIED LOGIC ---
+        let finalValue;
+        // If the key is for a text-based column, treat the value as a string.
+        if (key === 'model_classification' || key === 'status') {
+            finalValue = rawValue;
+        } else {
+            // Otherwise, try to convert it to a number.
+            finalValue = parseFloat(rawValue);
+            if (isNaN(finalValue)) {
+                // If it's not a valid number, skip this filter.
+                console.warn(`Invalid number for filter key '${key}': ${rawValue}`);
+                return;
+            }
+        }
+        filters.push({ key: key, op: op, value: finalValue });
+        // --- END MODIFIED LOGIC ---
     });
     
-    // --- DELETE THE SORT LOGIC FROM HERE ---
-	// const sortKey = document.getElementById('sort-key').value;
-    // const sortOrder = document.getElementById('sort-order').value;
-
     currentRequestState = {
         filters: filters,
-        // The sort state is now handled by handleSortClick, so we just keep the existing sort order
         sort: currentRequestState.sort,
         page: currentPage,
         limit: 100
@@ -177,7 +191,7 @@ function setupEventListeners() {
 // --- All Helper Functions ---
 
 function populateDisplayOptions() {
-    const defaultVisible = ['json_filename', 'webp_filename', 'edge_density', 'edge_density_3060', 'avg_brightness', 'size', 'laplacian', 'max_subject_area']; // MODIFIED
+    const defaultVisible = ['json_filename', 'webp_filename', 'model_score', 'model_classification', 'edge_density', 'avg_brightness', 'size', 'laplacian'];
     const container = document.getElementById('display-options-dropdown');
     let content = '';
     ALL_COLUMNS.forEach(col => {
@@ -192,42 +206,42 @@ function populateDisplayOptions() {
     container.innerHTML = content;
 }
 
+// In the addFilterRow function
+
 function addFilterRow() {
     const container = document.getElementById('filter-container');
     const newFilterRow = document.createElement('div');
-    // --- BEFORE ---
-	// newFilterRow.className = 'filter-row';
-	// --- AFTER ---
-	newFilterRow.className = 'filter-row metric-filter-row'; // Add the new specific class
+    newFilterRow.className = 'filter-row metric-filter-row';
     newFilterRow.innerHTML = `
         <label>Filter by:</label>
         <select class="filter-key">
+            <option value="model_classification">Model Classification</option>
+            <option value="model_score">Model Score</option>
             <option value="col">Column</option>
-			<option value="row">Row</option>
-			<option value="edge_density">Edge Density</option>
-			<option value="edge_density_3060">Edge Density 3060</option>
+            <option value="row">Row</option>
+            <option value="edge_density">Edge Density</option>
+            <option value="edge_density_3060">Edge Density 3060</option>
             <option value="entropy">Entropy</option>
             <option value="laplacian">Laplacian</option>
             <option value="avg_brightness">Avg. Brightness</option>
             <option value="avg_saturation">Avg. Saturation</option>
-			<option value="size">Size</option>
-			<option value="foreground_ratio">Foreground Ratio</option>
-			<option value="max_subject_area">Max Subject Area</option>
+            <option value="size">Size</option>
+            <option value="foreground_ratio">Foreground Ratio</option>
+            <option value="max_subject_area">Max Subject Area</option>
         </select>
         <select class="filter-op">
+            <option value="==">==</option>
+            <option value="!=">!=</option>
             <option value=">">&gt;</option>
             <option value="<">&lt;</option>
-			<option value=">=">&ge;</option>
+            <option value=">=">&ge;</option>
             <option value="<=">&le;</option>
-			<option value="==">==</option>
-            <option value="!=">!=</option>
         </select>
-        <input type="number" class="filter-value" step="any" placeholder="Enter value">
+        <input type="text" class="filter-value" placeholder="Enter value">
         <button type="button" class="remove-filter-btn" style="margin-left: 10px;">&times;</button>
     `;
     container.appendChild(newFilterRow);
 }
-
 
 function handlePrevClick() {
     if (currentPage > 1) {

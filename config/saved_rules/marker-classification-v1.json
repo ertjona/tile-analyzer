@@ -1,0 +1,94 @@
+{
+  "default_color": "#CCCCCC",
+  "rules": [
+    {
+      "name": "No Object or Empty Tile",
+      "color": "#f8f8f8",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "max_subject_area",
+            "op": "<=",
+            "value": 456
+          }
+        ]
+      }
+    },
+    {
+      "name": "Marker",
+      "color": "#1e1e1e",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "model_classification",
+            "op": "==",
+            "value": "marker"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Ring",
+      "color": "#4c4c4c",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "max_subject_area",
+            "op": ">=",
+            "value": 56989
+          },
+          {
+            "key": "avg_brightness",
+            "op": "<=",
+            "value": 228
+          }
+        ]
+      }
+    },
+    {
+      "name": "In Focus Tile",
+      "color": "#0000ff",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "laplacian",
+            "op": ">=",
+            "value": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "Slightly Focused Tile",
+      "color": "#00ffff",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "laplacian",
+            "op": ">=",
+            "value": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "Out of Focus or Blurry Tile",
+      "color": "#ffa000",
+      "rule_group": {
+        "logical_op": "AND",
+        "conditions": [
+          {
+            "key": "laplacian",
+            "op": "<",
+            "value": 3
+          }
+        ]
+      }
+    }
+  ]
+}

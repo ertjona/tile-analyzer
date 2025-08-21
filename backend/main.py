@@ -38,6 +38,7 @@ config = configparser.ConfigParser()
 config.read(CONFIG_PATH)
 EXPORT_CSV_LIMIT = config.getint('limits', 'export_csv_limit', fallback=50000)
 DOWNLOAD_IMAGES_LIMIT = config.getint('limits', 'download_images_limit', fallback=5000)
+ACTIVE_MODEL_NAME = config.get('settings', 'active_model_name', fallback=None)
 
 # --- Ensure Directories Exist ---
 SAVED_RULES_DIR.mkdir(parents=True, exist_ok=True)
@@ -96,64 +97,91 @@ def get_db_connection():
 @app.post("/api/tiles")
 def search_tiles(request: TilesRequest) -> Dict[str, Any]:
     conn = get_db_connection()
-    cursor = conn.cursor()
 
-    base_query = "SELECT T.*, S.json_filename FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
-    count_query = "SELECT COUNT(T.id) FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
-    
-    where_clauses = []
+    # --- Step 1: Determine if a JOIN with the Predictions table is needed ---
+    needs_prediction_join = False
+    if ACTIVE_MODEL_NAME:
+        if any(f.key in ["model_score", "model_classification"] for f in request.filters):
+            needs_prediction_join = True
+        if any(s.key in ["model_score", "model_classification"] for s in request.sort):
+            needs_prediction_join = True
+
+    # --- Step 2: Build the query components ---
+    select_columns = "T.*, S.json_filename"
+    from_clause = " FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id"
     params = []
-
+    
+    if needs_prediction_join:
+        select_columns += ", P.score as model_score, P.predicted_class as model_classification"
+        join_clause = " LEFT JOIN Predictions P ON T.id = P.tile_id LEFT JOIN Models M ON P.model_id = M.id AND M.name = ?"
+        from_clause += join_clause
+        params.append(ACTIVE_MODEL_NAME)
+    
+    # --- Step 3: Build the WHERE clause ---
+    where_clauses = []
     if request.filters:
         for f in request.filters:
+            if f.key in ["model_score", "model_classification"] and not needs_prediction_join:
+                continue
             valid_operators = {">", "<", ">=", "<=", "==", "!="}
             if f.op in valid_operators:
-                # MODIFIED: Backend now intelligently adds the correct prefix
-                prefix = "S" if f.key == "json_filename" else "T"
-                where_clauses.append(f"{prefix}.{f.key} {f.op} ?")
+                if f.key == "json_filename":
+                    db_column = "S.json_filename"
+                elif f.key == "model_score":
+                    db_column = "P.score"
+                elif f.key == "model_classification":
+                    db_column = "P.predicted_class"
+                else:
+                    db_column = f"T.{f.key}"
+                where_clauses.append(f"{db_column} {f.op} ?")
                 params.append(f.value)
-            else:
-                continue
+    
+    where_clause_str = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
+    # --- Step 4: Build the ORDER BY clause ---
     order_by_parts = []
     if request.sort:
         for s in request.sort:
+            if s.key in ["model_score", "model_classification"] and not needs_prediction_join:
+                continue
             order = s.order.upper() if s.order.lower() in ['asc', 'desc'] else 'ASC'
-            prefix = "S" if s.key == "json_filename" else "T"
-            order_by_parts.append(f"{prefix}.{s.key} {order}")
+            sort_column = s.key
+            if s.key not in ["model_score", "model_classification", "json_filename"]:
+                sort_column = f"T.{s.key}"
+            elif s.key == "json_filename":
+                sort_column = f"S.{s.key}"
+            order_by_parts.append(f"{sort_column} {order}")
     
     order_by_clause = "ORDER BY " + ", ".join(order_by_parts) if order_by_parts else "ORDER BY T.id ASC"
 
-    pagination_clause = "LIMIT ? OFFSET ?"
-    offset = (request.page - 1) * request.limit
-    
-    final_query = base_query
-    if where_clauses:
-        final_query += f" WHERE {' AND '.join(where_clauses)}"
-        count_query += f" WHERE {' AND '.join(where_clauses)}"
-    
-    final_query += f" {order_by_clause} {pagination_clause}"
-
+    # --- Step 5: Assemble and Execute the Queries ---
     try:
-        cursor.execute(count_query, params)
-        total_results = cursor.fetchone()[0]
-
-        cursor.execute(final_query, params + [request.limit, offset])
-        tiles = cursor.fetchall()
-        results = [dict(row) for row in tiles]
+        count_query = "SELECT COUNT(T.id)" + from_clause + where_clause_str
+        total_results = conn.execute(count_query, params).fetchone()[0]
+        
+        pagination_clause = " LIMIT ? OFFSET ?"
+        offset = (request.page - 1) * request.limit
+        params.extend([request.limit, offset])
+        
+        data_query = "SELECT " + select_columns + from_clause + where_clause_str + " " + order_by_clause + pagination_clause
+        
+        cursor = conn.execute(data_query, params)
+        column_names = [description[0] for description in cursor.description]
+        results = [dict(zip(column_names, row)) for row in cursor.fetchall()]
         
     except sqlite3.OperationalError as e:
         raise HTTPException(status_code=400, detail=f"Database query error: {e}")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     return {
-        "page": request.page, 
-        "limit": request.limit, 
-        "total_results": total_results, 
+        "page": request.page,
+        "limit": request.limit,
+        "total_results": total_results,
         "results": results
     }
-
+    
 # backend/main.py
 
 # ... (existing imports, ensure HTTPException, Dict, Any are imported from fastapi and typing) ...
@@ -165,39 +193,54 @@ def search_tiles(request: TilesRequest) -> Dict[str, Any]:
 @app.get("/api/tile_details")
 def get_tile_details(json_filename: str, col: int, row: int) -> Dict[str, Any]:
     """
-    Retrieves the full metadata for a specific image tile based on its source JSON filename, column, and row.
+    Retrieves the full metadata for a specific image tile, including the
+    active model's prediction score and classification.
     """
     conn = get_db_connection()
-    cursor = conn.cursor()
+
+    # --- MODIFIED: New query that joins all necessary tables ---
+    query = """
+        SELECT
+            T.*,
+            P.score as model_score,
+            P.predicted_class as model_classification
+        FROM
+            ImageTiles T
+        JOIN SourceFiles S ON T.source_file_id = S.id
+        LEFT JOIN Predictions P ON T.id = P.tile_id
+        LEFT JOIN Models M ON P.model_id = M.id AND M.name = ?
+        WHERE
+            S.json_filename = ? AND T.col = ? AND T.row = ?
+    """
+    
+    params = []
+    if ACTIVE_MODEL_NAME:
+        params.append(ACTIVE_MODEL_NAME)
+    else:
+        params.append(None) # Add a placeholder if no model is active
+    params.extend([json_filename, col, row])
+    # --- END OF MODIFICATIONS ---
 
     try:
-        # First, find the source_file_id from the json_filename
-        cursor.execute("SELECT id FROM SourceFiles WHERE json_filename = ?", (json_filename,))
-        source_file_record = cursor.fetchone()
+        # Using .execute() and .fetchone() is safer
+        cursor = conn.execute(query, params)
+        tile_data = cursor.fetchone()
 
-        if not source_file_record:
-            raise HTTPException(status_code=404, detail=f"Source file '{json_filename}' not found.")
-        
-        source_file_id = source_file_record['id']
+        if not tile_data:
+            # Fallback for tiles that might not have prediction data, though the query should still return the tile
+            simple_query = "SELECT T.* FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id WHERE S.json_filename = ? AND T.col = ? AND T.row = ?"
+            tile_data = conn.execute(simple_query, (json_filename, col, row)).fetchone()
 
-        # Now, query ImageTiles using source_file_id, col, and row
-        query = """
-            SELECT * FROM ImageTiles
-            WHERE source_file_id = ? AND col = ? AND row = ?
-        """
-        cursor.execute(query, (source_file_id, col, row))
-        tile = cursor.fetchone()
-
-        if not tile:
+        if not tile_data:
             raise HTTPException(status_code=404, detail=f"Tile (col={col}, row={row}) not found for '{json_filename}'.")
         
-        return dict(tile) # Return as a dictionary
+        return dict(tile_data)
         
     except sqlite3.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
     finally:
         conn.close()
-    
+        
 @app.get("/images/{source_id}/{webp_filename}")
 def get_image(source_id: int, webp_filename: str):
     """
@@ -471,31 +514,49 @@ class SaveRulesRequest(BaseModel):
 @app.post("/api/heatmap")
 def generate_heatmap(request: HeatmapRequest) -> Dict[str, Any]:
     conn = get_db_connection()
-    cursor = conn.cursor()
 
-    # Get all tiles for the specified JSON file
-    query = "SELECT T.* FROM ImageTiles T JOIN SourceFiles S ON T.source_file_id = S.id WHERE S.json_filename = ?"
+    # --- MODIFIED: Build a more powerful query that includes model predictions ---
+    query = """
+    SELECT
+        T.*,
+        P.score as model_score,
+        P.predicted_class as model_classification
+    FROM
+        ImageTiles T
+    JOIN SourceFiles S ON T.source_file_id = S.id
+    LEFT JOIN Predictions P ON T.id = P.tile_id
+    LEFT JOIN Models M ON P.model_id = M.id AND M.name = ?
+    WHERE S.json_filename = ?
+    """
+    
+    params = []
+    if ACTIVE_MODEL_NAME:
+        params.append(ACTIVE_MODEL_NAME)
+    else:
+        params.append(None) # Add a placeholder if no model is active
+    params.append(request.json_filename)
+    # --- END OF MODIFICATIONS ---
+
     try:
-        tiles = [dict(row) for row in cursor.execute(query, (request.json_filename,)).fetchall()]
+        # The query now returns a list of dictionaries with all keys, including model data
+        tiles = [dict(row) for row in conn.execute(query, params).fetchall()]
     except sqlite3.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
     finally:
         conn.close()
 
     if not tiles:
-        # MODIFIED: Return empty counts if no tiles
         return {
             "grid_width": 0,
             "grid_height": 0,
             "heatmap_data": [],
             "rules_config": request.rules_config,
-            "rule_match_counts": {} # NEW
+            "rule_match_counts": {}
         }
 
-
     # Determine grid size
-    max_col = max(t['col'] for t in tiles)
-    max_row = max(t['row'] for t in tiles)
+    max_col = max(t['col'] for t in tiles if t['col'] is not None)
+    max_row = max(t['row'] for t in tiles if t['row'] is not None)
     grid_width = max_col + 1
     grid_height = max_row + 1
 
@@ -506,31 +567,35 @@ def generate_heatmap(request: HeatmapRequest) -> Dict[str, Any]:
     ops = {'>': (lambda a, b: a > b), '<': (lambda a, b: a < b), '>=': (lambda a, b: a >= b),
            '<=': (lambda a, b: a <= b), '==': (lambda a, b: a == b), '!=': (lambda a, b: a != b)}
 
-    # NEW: Initialize rule match counters
-    rule_match_counts = {str(i): 0 for i in range(len(request.rules_config.rules))} # For indexed rules
-    rule_match_counts['default'] = 0 # For default unmatched tiles
+    # Initialize rule match counters
+    rule_match_counts = {str(i): 0 for i in range(len(request.rules_config.rules))}
+    rule_match_counts['default'] = 0
 
     # Process each tile against the rules
     for tile in tiles:
+        # Skip tiles that don't have row/col data (shouldn't happen with valid data)
+        if tile['row'] is None or tile['col'] is None:
+            continue
+
         matched_by_rule = False
-        for i, rule in enumerate(request.rules_config.rules): # Enumerate to get index
+        for i, rule in enumerate(request.rules_config.rules):
             is_match = evaluate_rule_group(tile, rule.rule_group, ops)
             if is_match:
                 index = tile['row'] * grid_width + tile['col']
                 heatmap_data[index] = rule.color
-                rule_match_counts[str(i)] += 1 # Increment counter for this rule
+                rule_match_counts[str(i)] += 1
                 matched_by_rule = True
-                break # Break to next tile (rule priority)
+                break
         
         if not matched_by_rule:
-            rule_match_counts['default'] += 1 # Increment default counter if no rule matched
+            rule_match_counts['default'] += 1
     
     return {
         "grid_width": grid_width,
         "grid_height": grid_height,
         "heatmap_data": heatmap_data,
         "rules_config": request.rules_config,
-        "rule_match_counts": rule_match_counts # NEW: Include counts in response
+        "rule_match_counts": rule_match_counts
     }
 
 

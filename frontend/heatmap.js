@@ -138,7 +138,7 @@ function addRuleBlock() {
     addConditionRow(ruleBlock);
 }
 
-// ... (rest of the file) ...
+// In frontend/heatmap.js
 
 function addConditionRow(ruleBlock) {
     const container = ruleBlock.querySelector('.conditions-container');
@@ -146,36 +146,52 @@ function addConditionRow(ruleBlock) {
     conditionRow.className = 'condition-row';
     conditionRow.innerHTML = `
         <select class="condition-key">
-            <option value="edge_density">Edge Density</option>
-			<option value="edge_density_3060">Edge Density 3060</option>
-            <option value="foreground_ratio">Foreground Ratio</option>
-			<option value="max_subject_area">Max Subject Area</option>
-            <option value="laplacian">Laplacian</option>
-            <option value="avg_brightness">Avg. Brightness</option>
-            <option value="size">Size</option>
-            <option value="entropy">Entropy</option> <option value="avg_saturation">Avg. Saturation</option> </select>
+            ${getConditionKeyOptionsHTML()}
+        </select>
         <select class="condition-op">
+            <option value="==">==</option>
+            <option value="!=">!=</option>
             <option value=">=">&ge;</option>
             <option value="<=">&le;</option>
-            <option value="==">==</option>
             <option value=">">&gt;</option>
             <option value="<">&lt;</option>
-            <option value="!=">!=</option>
         </select>
-        <input type="number" class="condition-value" step="any" placeholder="Enter value">
+        <input type="text" class="condition-value" placeholder="Enter value">
         <button type="button" class="remove-condition-btn">&times;</button>
     `;
     container.appendChild(conditionRow);
+}
+
+// --- NEW HELPER FUNCTION ---
+function getConditionKeyOptionsHTML(selectedKey = '') {
+    const options = [
+        { value: 'model_score', text: 'Model Score' },
+        { value: 'model_classification', text: 'Model Classification' },
+        { value: 'edge_density', text: 'Edge Density' },
+        { value: 'edge_density_3060', text: 'Edge Density 3060' },
+        { value: 'foreground_ratio', text: 'Foreground Ratio' },
+        { value: 'max_subject_area', text: 'Max Subject Area' },
+        { value: 'laplacian', text: 'Laplacian' },
+        { value: 'avg_brightness', text: 'Avg. Brightness' },
+        { value: 'size', text: 'Size' },
+        { value: 'entropy', text: 'Entropy' },
+        { value: 'avg_saturation', text: 'Avg. Saturation' }
+    ];
+
+    return options.map(opt => 
+        `<option value="${opt.value}" ${selectedKey === opt.value ? 'selected' : ''}>${opt.text}</option>`
+    ).join('');
 }
 
 // frontend/heatmap.js
 
 // ... (previous code) ...
 
-// --- NEW FUNCTION: Helper to get current rules from UI ---
+// In frontend/heatmap.js
+
 function getCurrentRulesConfigFromUI() {
     const rulesConfig = {
-        default_color: "#CCCCCC", // You might want to make this configurable too later
+        default_color: "#CCCCCC",
         rules: []
     };
 
@@ -184,20 +200,34 @@ function getCurrentRulesConfigFromUI() {
         ruleBlock.querySelectorAll('.condition-row').forEach(condRow => {
             const key = condRow.querySelector('.condition-key').value;
             const op = condRow.querySelector('.condition-op').value;
-            const value = condRow.querySelector('.condition-value').value;
+            const rawValue = condRow.querySelector('.condition-value').value;
 
-            if (value !== '') {
-                conditions.push({ key, op, value: parseFloat(value) });
+            if (rawValue.trim() !== '') {
+                // --- MODIFIED LOGIC ---
+                let finalValue;
+                // If the key is for a text-based column, treat the value as a string.
+                if (key === 'model_classification') {
+                    finalValue = rawValue;
+                } else {
+                    // Otherwise, try to convert it to a number.
+                    finalValue = parseFloat(rawValue);
+                    if (isNaN(finalValue)) {
+                        // If it's not a valid number for a numeric field, we can't use it.
+                        console.warn(`Invalid number for rule key '${key}': ${rawValue}`);
+                        return; // Skips this specific condition
+                    }
+                }
+                conditions.push({ key, op, value: finalValue });
+                // --- END MODIFIED LOGIC ---
             }
         });
 
         if (conditions.length > 0) {
-            // NEW: Get the rule name from the input field
             const ruleNameInput = ruleBlock.querySelector('.rule-name');
-            const ruleName = ruleNameInput ? ruleNameInput.value.trim() : ''; // Get value, trim, default to empty string
+            const ruleName = ruleNameInput ? ruleNameInput.value.trim() : '';
 
             const rule = {
-                name: ruleName || undefined, // Include name, set to undefined if empty to avoid sending empty string
+                name: ruleName || undefined,
                 color: ruleBlock.querySelector('.rule-color').value,
                 rule_group: {
                     logical_op: ruleBlock.querySelector('.rule-logical-op').value,
@@ -354,12 +384,13 @@ async function deleteSelectedRule() {
 
 // ... (previous code) ...
 
-// --- NEW FUNCTION: Populate Rule Builder UI ---
+// --- MODIFIED FUNCTION ---
 function populateRuleBuilderUI(rulesConfig) {
     const container = document.getElementById('rule-builder-container');
     container.innerHTML = ''; // Clear existing rule blocks
 
     rulesConfig.rules.forEach(rule => {
+        // ... (the first part of the function creating the ruleBlock remains the same) ...
         const ruleBlock = document.createElement('div');
         ruleBlock.className = 'rule-block';
         ruleBlock.innerHTML = `
@@ -381,42 +412,36 @@ function populateRuleBuilderUI(rulesConfig) {
         `;
         container.appendChild(ruleBlock);
 
+
         const conditionsContainer = ruleBlock.querySelector('.conditions-container');
+        // In frontend/heatmap.js, inside the populateRuleBuilderUI function...
+// ...
         rule.rule_group.conditions.forEach(condition => {
             const conditionRow = document.createElement('div');
             conditionRow.className = 'condition-row';
             conditionRow.innerHTML = `
                 <select class="condition-key">
-                    <option value="edge_density" ${condition.key === 'edge_density' ? 'selected' : ''}>Edge Density</option>
-					<option value="edge_density_3060" ${condition.key === 'edge_density_3060' ? 'selected' : ''}>Edge Density 3060</option>
-                    <option value="foreground_ratio" ${condition.key === 'foreground_ratio' ? 'selected' : ''}>Foreground Ratio</option>
-                    <option value="max_subject_area" ${condition.key === 'max_subject_area' ? 'selected' : ''}>Max Subject Area</option>
-                    <option value="laplacian" ${condition.key === 'laplacian' ? 'selected' : ''}>Laplacian</option>
-                    <option value="avg_brightness" ${condition.key === 'avg_brightness' ? 'selected' : ''}>Avg. Brightness</option>
-                    <option value="size" ${condition.key === 'size' ? 'selected' : ''}>Size</option>
-                    <option value="entropy" ${condition.key === 'entropy' ? 'selected' : ''}>Entropy</option>
-                    <option value="avg_saturation" ${condition.key === 'avg_saturation' ? 'selected' : ''}>Avg. Saturation</option>
+                    ${getConditionKeyOptionsHTML(condition.key)}
                 </select>
                 <select class="condition-op">
+                    <option value="==" ${condition.op === '==' ? 'selected' : ''}>==</option>
+                    <option value="!=" ${condition.op === '!=' ? 'selected' : ''}>!=</option>
                     <option value=">=" ${condition.op === '>=' ? 'selected' : ''}>&ge;</option>
                     <option value="<=" ${condition.op === '<=' ? 'selected' : ''}>&le;</option>
-                    <option value="==" ${condition.op === '==' ? 'selected' : ''}>==</option>
                     <option value=">" ${condition.op === '>' ? 'selected' : ''}>&gt;</option>
                     <option value="<" ${condition.op === '<' ? 'selected' : ''}>&lt;</option>
-                    <option value="!=" ${condition.op === '!=' ? 'selected' : ''}>!=</option>
                 </select>
-                <input type="number" class="condition-value" step="any" placeholder="Enter value" value="${condition.value}">
+                <input type="text" class="condition-value" placeholder="Enter value" value="${condition.value}">
                 <button type="button" class="remove-condition-btn">&times;</button>
             `;
             conditionsContainer.appendChild(conditionRow);
         });
+// ...
     });
     if (rulesConfig.rules.length === 0) {
         addRuleBlock();
     }
 }
-
-// ... (rest of the file) ...
 
 // --- Main function to generate the heatmap ---
 async function generateHeatmap() {

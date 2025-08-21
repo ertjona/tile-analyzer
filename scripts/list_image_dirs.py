@@ -29,7 +29,7 @@ def list_unique_directories():
             print("No image directories found in the database.")
             return
 
-        print("# List of unique image directories from the database:")
+        #print("# List of unique image directories from the database:")
         for directory in directories:
             print(directory)
 
